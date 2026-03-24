@@ -1,197 +1,738 @@
 // src/app/auth/register/page.js
 "use client";
-import { useState } from 'react';
-import Head from 'next/head';
+
+import React, { useState, useEffect } from 'react';
+import {
+  Container,
+  Box,
+  Paper,
+  Typography,
+  TextField,
+  Button,
+  IconButton,
+  InputAdornment,
+  FormControl,
+  FormControlLabel,
+  Checkbox,
+  Link as MuiLink,
+  Alert,
+  CircularProgress,
+  useTheme,
+  alpha,
+  Grid,
+  Card,
+  CardContent,
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { useRouter } from 'next/navigation'; // Importar useRouter
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import VerifiedIcon from '@mui/icons-material/Verified';
+import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
+
+// Styled Components
+const StyledCard = styled(Card)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: theme.spacing(2),
+  cursor: 'pointer',
+  transition: 'all 0.3s ease',
+  border: `2px solid transparent`,
+  '&:hover': {
+    transform: 'translateY(-4px)',
+    boxShadow: theme.shadows[8],
+  },
+  '&.selected': {
+    borderColor: theme.palette.primary.main,
+    backgroundColor: alpha(theme.palette.primary.main, 0.05),
+  },
+}));
 
 const Register = () => {
-    const router = useRouter(); // Inicializar router
-    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-    const [isButtonVisible, setIsButtonVisible] = useState(false);
-    const [message, setMessage] = useState('');
-    const [messageType, setMessageType] = useState('');
+  const [mounted, setMounted] = useState(false);
+  const theme = useTheme();
+  const router = useRouter();
 
-    const [Nome, setNome] = useState('');
-    const [Email, setEmail] = useState('');
-    const [Senha, setSenha] = useState('');
-    const [Type_user, setType_user] = useState('');
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-    const togglePasswordVisibility = () => {
-        setIsPasswordVisible(!isPasswordVisible);
-    };
+  // Estados do formulário
+  const [formData, setFormData] = useState({
+    nome: '',
+    email: '',
+    senha: '',
+    confirmarSenha: '',
+    tipoUsuario: '',
+    termosAceitos: false
+  });
 
-    const handleInputFocus = () => {
-        setIsButtonVisible(true);
-    };
+  // Estados de UI
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState({ text: '', type: '' });
+  const [passwordStrength, setPasswordStrength] = useState({ score: 0, feedback: '' });
+  const [touched, setTouched] = useState({
+    nome: false,
+    email: false,
+    senha: false,
+    confirmarSenha: false,
+    tipoUsuario: false
+  });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+  // Se não estiver montado, renderiza null para evitar erro de hidratação
+  if (!mounted) {
+    return null;
+  }
 
-        try {
-            var res = await axios.post("http://localhost:8080/auth/register", {
-                Nome: Nome,
-                Email: Email,
-                Senha: Senha,
-                Type_user: Type_user
-            });
+  // Funções de manipulação
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
 
-            setMessage(res.data.msg);
-            setMessageType('success');
+    if (name === 'senha') {
+      analyzePasswordStrength(value);
+    }
+  };
 
-            // Redirecionar para a página de login após 2 segundos se for bem-sucedido
-            setTimeout(() => {
-                router.push('/auth/login');
-            }, 2000);
+  const handleBlur = (field) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
 
-        } catch (error) {
-            const mensagemErro = error.response?.data?.msg || error.message;
-            setMessage(mensagemErro);
-            setMessageType('error');
+  // Análise de força da senha
+  const analyzePasswordStrength = (password) => {
+    let score = 0;
+    let feedback = '';
+
+    if (password.length >= 8) score++;
+    if (password.match(/[a-z]/)) score++;
+    if (password.match(/[A-Z]/)) score++;
+    if (password.match(/[0-9]/)) score++;
+    if (password.match(/[^a-zA-Z0-9]/)) score++;
+
+    switch (score) {
+      case 0:
+      case 1:
+        feedback = 'Muito fraca';
+        break;
+      case 2:
+        feedback = 'Fraca';
+        break;
+      case 3:
+        feedback = 'Média';
+        break;
+      case 4:
+        feedback = 'Forte';
+        break;
+      case 5:
+        feedback = 'Muito forte';
+        break;
+    }
+
+    setPasswordStrength({ score, feedback });
+  };
+
+  // Validações
+  const validateEmail = (email) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
+
+  const validateAngolanPhone = (phone) => {
+    const re = /^9[0-9]{8}$/;
+    return re.test(phone);
+  };
+
+  const getFieldError = (field) => {
+    if (!touched[field]) return '';
+
+    switch (field) {
+      case 'nome':
+        if (!formData.nome) return 'Nome é obrigatório';
+        if (formData.nome.length < 3) return 'Nome deve ter pelo menos 3 caracteres';
+        return '';
+
+      case 'email':
+        if (!formData.email) return 'Email é obrigatório';
+        if (!validateEmail(formData.email) && !validateAngolanPhone(formData.email)) {
+          return 'Digite um email válido ou telefone angolano (9 dígitos)';
         }
-    };
+        return '';
 
-    const handleLoginRedirect = (e) => {
-        e.preventDefault();
+      case 'senha':
+        if (!formData.senha) return 'Senha é obrigatória';
+        if (formData.senha.length < 6) return 'Senha deve ter pelo menos 6 caracteres';
+        return '';
+
+      case 'confirmarSenha':
+        if (!formData.confirmarSenha) return 'Confirme sua senha';
+        if (formData.senha !== formData.confirmarSenha) return 'As senhas não coincidem';
+        return '';
+
+      case 'tipoUsuario':
+        if (!formData.tipoUsuario) return 'Selecione o tipo de usuário';
+        return '';
+
+      default:
+        return '';
+    }
+  };
+
+  const isFormValid = () => {
+    return (
+      formData.nome &&
+      formData.email &&
+      formData.senha &&
+      formData.confirmarSenha &&
+      formData.tipoUsuario &&
+      formData.termosAceitos &&
+      formData.senha === formData.confirmarSenha &&
+      formData.senha.length >= 6
+    );
+  };
+
+  // Submit do formulário
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setTouched({
+      nome: true,
+      email: true,
+      senha: true,
+      confirmarSenha: true,
+      tipoUsuario: true
+    });
+
+    if (!isFormValid()) {
+      setMessage({
+        text: 'Por favor, preencha todos os campos corretamente.',
+        type: 'error'
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage({ text: '', type: '' });
+
+    try {
+      // Mapear tipo de usuário para o formato do backend (entrepreneur/investor)
+      const userTypeMap = {
+        'investidor': 'investor',
+        'empreendedor': 'entrepreneur'
+      };
+
+      const response = await axios.post("http://localhost:8080/auth/register", {
+        Nome: formData.nome,
+        Email: formData.email,
+        Senha: formData.senha,
+        Type_user: userTypeMap[formData.tipoUsuario]
+      });
+
+      setMessage({
+        text: response.data.msg || 'Registro realizado com sucesso!',
+        type: 'success'
+      });
+
+      setFormData({
+        nome: '',
+        email: '',
+        senha: '',
+        confirmarSenha: '',
+        tipoUsuario: '',
+        termosAceitos: false
+      });
+
+      setTimeout(() => {
         router.push('/auth/login');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Erro detalhado:', error);
+
+      let mensagemErro = 'Erro ao registrar. Tente novamente.';
+
+      if (error.response) {
+        mensagemErro = error.response.data?.msg ||
+          error.response.data?.error ||
+          `Erro ${error.response.status}`;
+      }
+
+      setMessage({
+        text: mensagemErro,
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Renderizar indicador de força da senha
+  const renderPasswordStrength = () => {
+    if (!formData.senha || formData.senha.length === 0) return null;
+
+    const colors = {
+      1: theme.palette.error.main,
+      2: theme.palette.warning.main,
+      3: theme.palette.info.main,
+      4: theme.palette.success.main,
+      5: theme.palette.success.dark,
     };
 
     return (
-        <>
-            <Head>
-                <title>KAMBABUSINESS | Registro Corporativo</title>
-                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&display=swap" />
-            </Head>
-            <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen flex items-center justify-center p-0 md:p-6">
-                <div className="flex w-full max-w-[1200px] min-h-[80vh] bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-2xl shadow-slate-200 dark:shadow-none border border-slate-200 dark:border-slate-800">
-                    {/* Left Side: Form Section */}
-                    <div className="w-full lg:w-1/2 flex flex-col p-8 md:p-16">
-                        <header className="mb-12">
-                            <div className="flex items-center gap-2 text-primary dark:text-accent mb-8">
-                                <div className="size-8 bg-primary dark:bg-accent rounded-lg flex items-center justify-center text-white">
-                                    <span className="material-symbols-outlined text-xl">person_add</span>
-                                </div>
-                                <h2 className="text-xl font-bold leading-tight tracking-tight">KAMBABUSINESS</h2>
-                            </div>
-                            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Criar uma nova conta</h1>
-                            <p className="text-slate-500 dark:text-slate-400">Preencha os dados abaixo para registrar.</p>
-                        </header>
-                        
-                        {/* Message Display */}
-                        {message && (
-                            <div className={`p-4 mb-4 text-sm ${messageType === 'success' ? 'text-green-700 bg-green-100 border border-green-400 border-dashed' : 'text-red-700 bg-red-100 border border-red-400 border-dashed'} rounded`}>
-                                {message}
-                                {messageType === 'success' && (
-                                    <p className="mt-2 text-sm">Redirecionando para o login...</p>
-                                )}
-                            </div>
-                        )}
-
-                        <form className="space-y-6 flex-grow" onSubmit={handleSubmit} aria-label="Formulário de Registro">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" htmlFor="name">Nome Completo</label>
-                                <input
-                                    className="w-full px-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent transition-all outline-none placeholder:text-slate-400"
-                                    id="name"
-                                    name="name"
-                                    placeholder="Seu Nome Completo"
-                                    type="text"
-                                    required
-                                    value={Nome}
-                                    onChange={(e) => setNome(e.target.value)}
-                                    onFocus={handleInputFocus}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" htmlFor="email">E-mail Corporativo</label>
-                                <input
-                                    className="w-full px-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent transition-all outline-none placeholder:text-slate-400"
-                                    id="email"
-                                    name="email"
-                                    value={Email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="exemplo@empresa.ao"
-                                    type="email"
-                                    required
-                                    onFocus={handleInputFocus}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" htmlFor="password">Palavra-passe</label>
-                                <div className="relative flex items-center">
-                                    <input
-                                        className="w-full px-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent transition-all outline-none placeholder:text-slate-400 pr-12"
-                                        id="password"
-                                        name="password"
-                                        value={Senha}
-                                        onChange={(e) => setSenha(e.target.value)}
-                                        placeholder="••••••••"
-                                        type={isPasswordVisible ? 'text' : 'password'}
-                                        required
-                                        onFocus={handleInputFocus}
-                                    />
-                                    <button
-                                        className="absolute right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                                        type="button"
-                                        onClick={togglePasswordVisibility}
-                                        aria-label="Mostrar senha"
-                                    >
-                                        <span className="material-symbols-outlined text-lg">
-                                            {isPasswordVisible ? 'visibility_off' : 'visibility'}
-                                        </span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" htmlFor="userType">Tipo de Usuário</label>
-                                <select
-                                    className="w-full px-4 py-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent focus:border-transparent transition-all outline-none placeholder:text-slate-400"
-                                    id="userType"
-                                    name="userType"
-                                    value={Type_user}
-                                    onChange={(e) => setType_user(e.target.value)}
-                                    required
-                                >
-                                    <option value="investor">Investidor</option>
-                                    <option value="entrepreneur">Empreendedor</option>
-                                </select>
-                            </div>
-                            {isButtonVisible && (
-                                <button
-                                    className="w-full bg-blue-600 dark:bg-blue-700 text-white font-bold py-4 rounded-lg transition-colors shadow-lg shadow-slate-200 dark:shadow-none mt-4"
-                                    type="submit"
-                                >
-                                    Criar Conta
-                                </button>
-                            )}
-                        </form>
-                        <footer className="mt-12 pt-8 border-t border-slate-100 dark:border-slate-800 text-center">
-                            <p className="text-slate-600 dark:text-slate-400">
-                                Já tem uma conta?
-                                <button 
-                                    onClick={handleLoginRedirect}
-                                    className="text-accent font-bold hover:underline ml-1 bg-transparent border-none cursor-pointer"
-                                >
-                                    Entrar
-                                </button>
-                            </p>
-                        </footer>
-                    </div>
-                    {/* Right Side: Visual Section */}
-                    <div className="hidden lg:flex w-1/2 relative overflow-hidden bg-primary">
-                        <div className="absolute inset-0 opacity-40 mix-blend-overlay">
-                            <div className="absolute inset-0 bg-gradient-to-br from-primary via-slate-900 to-accent"></div>
-                        </div>
-                        <img
-                            alt="Modern Corporate Building Architecture"
-                            className="absolute inset-0 w-full h-full object-cover"
-                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAXM4lfuKdh8y9nRwEZlaTo1Y5sf-GauDe0iWUxRrT_YZhuadOs2HLqRaG9P1kKAY0CxojbOl6nGcscL0X8V8WMPIBQncNtZZmNQ1DW-dQ1evLUUIL0hDY-0ksf66sYR7_-L9a-zb0nG-CcyYRcycb_wVbwVE9TFm8OkonZizhODYhcN5izjJmmJhAQLmtOtizgkd1_JHTZdhYdLS7dUkZVHZSY-KmXQeNErYlVzN2ixKiX0grU7o-slXbKjwLmeAvbt3WCw-7_Hoc"
-                        />
-                    </div>
-                </div>
-            </div>
-        </>
+      <Box sx={{ mt: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <Box sx={{ flex: 1, height: 4, bgcolor: alpha(theme.palette.primary.main, 0.1), borderRadius: 2, overflow: 'hidden' }}>
+            <Box
+              sx={{
+                width: `${(passwordStrength.score / 5) * 100}%`,
+                height: '100%',
+                bgcolor: colors[passwordStrength.score] || theme.palette.grey[400],
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 70 }}>
+            {passwordStrength.feedback}
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: formData.senha.length >= 6 ? 'success.main' : 'text.secondary',
+            }}
+          >
+            • Mínimo 6 caracteres
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: /[a-z]/.test(formData.senha) && /[A-Z]/.test(formData.senha) ? 'success.main' : 'text.secondary',
+            }}
+          >
+            • Letras maiúsculas e minúsculas
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: /[0-9]/.test(formData.senha) ? 'success.main' : 'text.secondary',
+            }}
+          >
+            • Pelo menos um número
+          </Typography>
+        </Box>
+      </Box>
     );
+  };
+
+  return (
+    <Container maxWidth="lg" sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', py: 4 }}>
+      <Paper
+        elevation={24}
+        sx={{
+          width: '100%',
+          borderRadius: 4,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: { xs: 'column', lg: 'row' },
+        }}
+      >
+        {/* Left Side - Formulário */}
+        <Box sx={{ flex: 1, p: { xs: 3, md: 6 } }}>
+          {/* Logo e cabeçalho */}
+          <Box sx={{ mb: 4, textAlign: { xs: 'center', lg: 'left' } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: { xs: 'center', lg: 'flex-start' }, gap: 1, mb: 2 }}>
+              <Box
+                sx={{
+                  width: 48,
+                  height: 48,
+                  bgcolor: 'primary.main',
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <PersonAddIcon sx={{ color: 'white' }} />
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                KAMBABUSINESS
+              </Typography>
+            </Box>
+            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
+              Criar nova conta
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Junte-se à plataforma de investimentos de Angola
+            </Typography>
+          </Box>
+
+          {/* Mensagem de feedback */}
+          {message.text && (
+            <Alert
+              severity={message.type}
+              icon={<CheckCircleIcon />}
+              sx={{ mb: 3 }}
+            >
+              {message.text}
+              {message.type === 'success' && (
+                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                  Redirecionando para o login...
+                </Typography>
+              )}
+            </Alert>
+          )}
+
+          {/* Formulário */}
+          <form onSubmit={handleSubmit}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {/* Nome Completo */}
+              <TextField
+                fullWidth
+                label="Nome Completo"
+                name="nome"
+                value={formData.nome}
+                onChange={handleChange}
+                onBlur={() => handleBlur('nome')}
+                error={!!getFieldError('nome')}
+                helperText={getFieldError('nome')}
+                disabled={isLoading}
+                placeholder="Digite seu nome completo"
+              />
+
+              {/* Email/Telefone */}
+              <TextField
+                fullWidth
+                label="Email ou Telefone"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                onBlur={() => handleBlur('email')}
+                error={!!getFieldError('email')}
+                helperText={getFieldError('email') || "Use seu email ou telefone angolano (9 dígitos)"}
+                disabled={isLoading}
+                placeholder="exemplo@email.com ou 923456789"
+              />
+
+              {/* Senha */}
+              <TextField
+                fullWidth
+                label="Palavra-passe"
+                name="senha"
+                type={isPasswordVisible ? 'text' : 'password'}
+                value={formData.senha}
+                onChange={handleChange}
+                onBlur={() => handleBlur('senha')}
+                error={!!getFieldError('senha')}
+                helperText={getFieldError('senha')}
+                disabled={isLoading}
+                placeholder="••••••••"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setIsPasswordVisible(!isPasswordVisible)}
+                        edge="end"
+                        disabled={isLoading}
+                      >
+                        {isPasswordVisible ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              {renderPasswordStrength()}
+
+              {/* Confirmar Senha */}
+              <TextField
+                fullWidth
+                label="Confirmar Palavra-passe"
+                name="confirmarSenha"
+                type={isConfirmPasswordVisible ? 'text' : 'password'}
+                value={formData.confirmarSenha}
+                onChange={handleChange}
+                onBlur={() => handleBlur('confirmarSenha')}
+                error={!!getFieldError('confirmarSenha')}
+                helperText={getFieldError('confirmarSenha')}
+                disabled={isLoading}
+                placeholder="••••••••"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}
+                        edge="end"
+                        disabled={isLoading}
+                      >
+                        {isConfirmPasswordVisible ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              {/* Tipo de Usuário */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                  Tipo de Conta
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <StyledCard
+                      className={formData.tipoUsuario === 'investidor' ? 'selected' : ''}
+                      onClick={() => !isLoading && setFormData(prev => ({ ...prev, tipoUsuario: 'investidor' }))}
+                    >
+                      <Box sx={{ fontSize: 40, mb: 1 }}>💰</Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        Investidor
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" align="center">
+                        Invista em projetos
+                      </Typography>
+                    </StyledCard>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <StyledCard
+                      className={formData.tipoUsuario === 'empreendedor' ? 'selected' : ''}
+                      onClick={() => !isLoading && setFormData(prev => ({ ...prev, tipoUsuario: 'empreendedor' }))}
+                    >
+                      <Box sx={{ fontSize: 40, mb: 1 }}>🚀</Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        Empreendedor
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" align="center">
+                        Crie e gerencie projetos
+                      </Typography>
+                    </StyledCard>
+                  </Grid>
+                </Grid>
+                {getFieldError('tipoUsuario') && (
+                  <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
+                    {getFieldError('tipoUsuario')}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* Termos e Condições - CORRIGIDO sem âncora dentro de âncora */}
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="termosAceitos"
+                    checked={formData.termosAceitos}
+                    onChange={handleChange}
+                    disabled={isLoading}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    Li e aceito os{' '}
+                    <MuiLink
+                      href="/termos"
+                      underline="hover"
+                      color="primary.main"
+                      sx={{ fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Termos e Condições
+                    </MuiLink>{' '}
+                    e a{' '}
+                    <MuiLink
+                      href="/privacidade"
+                      underline="hover"
+                      color="primary.main"
+                      sx={{ fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Política de Privacidade
+                    </MuiLink>
+                  </Typography>
+                }
+                sx={{
+                  p: 2,
+                  bgcolor: alpha(theme.palette.primary.main, 0.05),
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+                }}
+              />
+
+              {/* Botão de Submit */}
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                fullWidth
+                disabled={isLoading}
+                sx={{
+                  py: 1.5,
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                  '&:hover': {
+                    background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
+                  },
+                }}
+              >
+                {isLoading ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} sx={{ color: 'white' }} />
+                    <span>Processando...</span>
+                  </Box>
+                ) : (
+                  'Criar Conta'
+                )}
+              </Button>
+
+              {/* Mensagem de validação */}
+              {!isFormValid() && !isLoading && Object.values(touched).some(Boolean) && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Preencha todos os campos e aceite os termos para criar sua conta
+                </Alert>
+              )}
+            </Box>
+          </form>
+
+          {/* Link para Login */}
+          <Box sx={{ mt: 4, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              Já tem uma conta?{' '}
+              <MuiLink
+                href="/auth/login"
+                underline="hover"
+                sx={{
+                  color: 'primary.main',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Entrar
+              </MuiLink>
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Right Side - Hero Section */}
+        <Box
+          sx={{
+            flex: 1,
+            display: { xs: 'none', lg: 'flex' },
+            flexDirection: 'column',
+            justifyContent: 'center',
+            p: 6,
+            background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Padrão de fundo */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: 0.1,
+              background: 'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.4"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+            }}
+          />
+
+          {/* Conteúdo */}
+          <Box sx={{ position: 'relative', zIndex: 1, color: 'white' }}>
+            <Typography variant="h3" sx={{ fontWeight: 800, mb: 3 }}>
+              Invista no futuro de Angola
+            </Typography>
+            <Typography variant="h6" sx={{ mb: 4, opacity: 0.9, fontWeight: 400 }}>
+              Conectamos investidores a empreendedores de forma simples e segura
+            </Typography>
+
+            {/* Features */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mb: 6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <WhatsAppIcon />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Pagamentos via WhatsApp
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Receba e faça pagamentos de forma simples e rápida
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <VerifiedIcon />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Extratos de Negócios
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Acompanhe seus extratos diretamente no WhatsApp
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <BusinessCenterIcon />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Oportunidades de Negócio
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Descubra projetos promissores para investir
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Paper>
+    </Container>
+  );
 };
 
 export default Register;
