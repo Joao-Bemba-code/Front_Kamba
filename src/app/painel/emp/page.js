@@ -98,6 +98,11 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ChatIcon from '@mui/icons-material/Chat';
 import SendIcon from '@mui/icons-material/Send';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SaveIcon from '@mui/icons-material/Save';
+import CancelIcon from '@mui/icons-material/Cancel';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import GroupsIcon2 from '@mui/icons-material/Groups';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
 
 import axios from "axios";
 
@@ -520,6 +525,7 @@ export default function EntrepreneurPage() {
   const [openProjectDialog, setOpenProjectDialog] = useState(false);
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
   const [openSettingsDialog, setOpenSettingsDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [anchorEl, setAnchorEl] = useState(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
@@ -535,6 +541,25 @@ export default function EntrepreneurPage() {
   const [projectInvestments, setProjectInvestments] = useState({});
   const [unreadMessagesByProject, setUnreadMessagesByProject] = useState({});
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+  
+  // Estados para edição de projeto
+  const [editingProject, setEditingProject] = useState(null);
+  const [editProjectData, setEditProjectData] = useState({
+    Nome: '',
+    Img: '',
+    Content: '',
+    Categ: '',
+    ValorProjecto: '',
+    ReceitaEstimada: '',
+    DuracaoProjecto: '',
+    Resumo: '',
+    Problematica: '',
+    PublicoAlvo: '',
+    Solucao: ''
+  });
+  const [editUploading, setEditUploading] = useState(false);
+  const [editImagePreview, setEditImagePreview] = useState(null);
+  const [editSelectedImage, setEditSelectedImage] = useState(null);
 
   const entrepreneur = useMemo(() => {
     if (!userData) return null;
@@ -552,7 +577,19 @@ export default function EntrepreneurPage() {
   }, [userData]);
 
   const [editProfile, setEditProfile] = useState({ name: '', bio: '' });
-  const [newProject, setNewProject] = useState({ name: '', description: '', category: '', targetAmount: '', image: '', pitch: '', expectedRoi: '', duration: '' });
+  const [newProject, setNewProject] = useState({ 
+    name: '', 
+    description: '', 
+    category: '', 
+    targetAmount: '', 
+    image: '', 
+    pitch: '', 
+    expectedRoi: '', 
+    duration: '',
+    problematica: '',
+    publicoAlvo: '',
+    solucao: ''
+  });
 
   const fetchUserProjects = useCallback(async (userId) => {
     if (!userId) return;
@@ -571,7 +608,12 @@ export default function EntrepreneurPage() {
           status: proj.Status,
           successProbability: proj.ProbalidadeAi || 0,
           roi: proj.ReceitaEstimada || 0,
-          ownerId: proj.Iduser
+          duration: proj.DuracaoProjecto,
+          pitch: proj.Resumo,
+          ownerId: proj.Iduser,
+          problematica: proj.Problematica || '',
+          publicoAlvo: proj.PublicoAlvo || '',
+          solucao: proj.Solucao || ''
         }));
         setProjects(formattedProjects);
         setFilteredProjects(formattedProjects);
@@ -618,6 +660,82 @@ export default function EntrepreneurPage() {
   const handleUnreadCountChange = (projectId, count) => {
     setUnreadMessagesByProject(prev => ({ ...prev, [projectId]: count }));
     fetchUnreadMessages();
+  };
+
+  // Função para editar projeto
+  const handleEditProject = (project) => {
+    setEditingProject(project);
+    setEditProjectData({
+      Nome: project.name,
+      Img: project.image,
+      Content: project.description || '',
+      Categ: project.category,
+      ValorProjecto: project.targetAmount,
+      ReceitaEstimada: project.roi || '',
+      DuracaoProjecto: project.duration || '',
+      Resumo: project.pitch || '',
+      Problematica: project.problematica || '',
+      PublicoAlvo: project.publicoAlvo || '',
+      Solucao: project.solucao || ''
+    });
+    setEditImagePreview(project.image);
+    setEditSelectedImage(null);
+    setOpenEditDialog(true);
+  };
+
+  // Função para atualizar imagem na edição
+  const handleEditImageChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setEditSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setEditImagePreview(reader.result);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Função para salvar edição
+  const handleSaveEdit = async () => {
+    if (!editingProject) return;
+    
+    setEditUploading(true);
+    try {
+      let imageUrl = editProjectData.Img;
+      
+      // Se uma nova imagem foi selecionada, fazer upload
+      if (editSelectedImage) {
+        imageUrl = await uploadImageToURL(editSelectedImage);
+      }
+      
+      const updateData = {
+        Nome: editProjectData.Nome,
+        Img: imageUrl,
+        Content: editProjectData.Content,
+        Categ: editProjectData.Categ,
+        ValorProjecto: parseFloat(editProjectData.ValorProjecto),
+        ReceitaEstimada: parseFloat(editProjectData.ReceitaEstimada),
+        DuracaoProjecto: String(editProjectData.DuracaoProjecto),
+        Resumo: editProjectData.Resumo,
+        Problematica: editProjectData.Problematica,
+        PublicoAlvo: editProjectData.PublicoAlvo,
+        Solucao: editProjectData.Solucao,
+        Iduser: userData.id
+      };
+      
+      await axios.put(`${API_BASE_URL}/project/edit/${editingProject.id}`, updateData);
+      
+      setSnackbar({ open: true, message: 'Projeto atualizado com sucesso!', severity: 'success' });
+      setOpenEditDialog(false);
+      
+      // Recarregar projetos
+      await fetchUserProjects(userData.id);
+      
+    } catch (error) {
+      console.error('Erro ao editar projeto:', error);
+      setSnackbar({ open: true, message: 'Erro ao atualizar projeto', severity: 'error' });
+    } finally {
+      setEditUploading(false);
+    }
   };
 
   useEffect(() => {
@@ -699,7 +817,19 @@ export default function EntrepreneurPage() {
     setCreateStep(0);
     setSelectedImage(null);
     setImagePreview(null);
-    setNewProject({ name: '', description: '', category: '', targetAmount: '', image: '', pitch: '', expectedRoi: '', duration: '' });
+    setNewProject({ 
+      name: '', 
+      description: '', 
+      category: '', 
+      targetAmount: '', 
+      image: '', 
+      pitch: '', 
+      expectedRoi: '', 
+      duration: '',
+      problematica: '',
+      publicoAlvo: '',
+      solucao: ''
+    });
     setOpenCreateDialog(true);
   };
 
@@ -729,6 +859,13 @@ export default function EntrepreneurPage() {
       } finally {
         setUploading(false);
       }
+    } else if (createStep === 1) {
+      // Validação dos campos de problema, público-alvo e solução
+      if (!newProject.problematica || !newProject.publicoAlvo || !newProject.solucao) {
+        setSnackbar({ open: true, message: 'Preencha todos os campos: Problemática, Público-Alvo e Solução', severity: 'error' });
+        return;
+      }
+      setCreateStep(2);
     } else {
       setCreateStep(createStep + 1);
     }
@@ -749,6 +886,9 @@ export default function EntrepreneurPage() {
         Resumo: newProject.pitch,
         ReceitaEstimada: newProject.expectedRoi,
         DuracaoProjecto: Number(newProject.duration),
+        Problematica: newProject.problematica,
+        PublicoAlvo: newProject.publicoAlvo,
+        Solucao: newProject.solucao,
         Iduser: userDataFromStorage.id,
       };
       await axios.post(`${API_BASE_URL}/project/create`, projectData);
@@ -909,7 +1049,28 @@ export default function EntrepreneurPage() {
                         const progress = (totalInvested / project.targetAmount) * 100;
                         return (
                           <Grid item xs={12} md={6} key={project.id}>
-                            <Card><CardMedia component="img" height="220" image={project.image} /><CardContent><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}><Typography variant="h6">{project.name}</Typography><Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} /></Box><Typography variant="body2" color="text.secondary">{project.description?.substring(0, 120)}...</Typography><Box sx={{ mt: 2 }}><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="caption">Arrecadado</Typography><Typography variant="caption" fontWeight={600}>Kz {formatCurrency(totalInvested)} / Kz {formatCurrency(project.targetAmount)}</Typography></Box><LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 6, borderRadius: 3 }} /></Box></CardContent><CardActions sx={{ p: 3, pt: 0, display: 'flex', gap: 1 }}><Button variant="outlined" fullWidth startIcon={<VisibilityIcon />} onClick={() => handleViewProject(project)}>Ver Detalhes</Button><ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} /></CardActions></Card>
+                            <Card>
+                              <CardMedia component="img" height="220" image={project.image} />
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                  <Typography variant="h6">{project.name}</Typography>
+                                  <Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} />
+                                </Box>
+                                <Typography variant="body2" color="text.secondary">{project.description?.substring(0, 120)}...</Typography>
+                                <Box sx={{ mt: 2 }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                    <Typography variant="caption">Arrecadado</Typography>
+                                    <Typography variant="caption" fontWeight={600}>Kz {formatCurrency(totalInvested)} / Kz {formatCurrency(project.targetAmount)}</Typography>
+                                  </Box>
+                                  <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 6, borderRadius: 3 }} />
+                                </Box>
+                              </CardContent>
+                              <CardActions sx={{ p: 3, pt: 0, display: 'flex', gap: 1 }}>
+                                <Button variant="outlined" fullWidth startIcon={<VisibilityIcon />} onClick={() => handleViewProject(project)}>Ver Detalhes</Button>
+                                <Button variant="outlined" fullWidth startIcon={<EditIcon />} onClick={() => handleEditProject(project)}>Editar</Button>
+                                <ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} />
+                              </CardActions>
+                            </Card>
                           </Grid>
                         );
                       })}
@@ -931,9 +1092,18 @@ export default function EntrepreneurPage() {
                     </Stack>
                   </Box>
 
-                  <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={handleFilterClose}><MenuItem disabled>Categoria</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'todos')}>Todos</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Agrotech')}>Agrotech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Healthtech')}>Healthtech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Energia')}>Energia</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Edtech')}>Edtech</MenuItem></Menu>
+                  <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={handleFilterClose}>
+                    <MenuItem disabled>Categoria</MenuItem>
+                    <MenuItem onClick={() => handleApplyFilter('category', 'todos')}>Todos</MenuItem>
+                    <MenuItem onClick={() => handleApplyFilter('category', 'Agrotech')}>Agrotech</MenuItem>
+                    <MenuItem onClick={() => handleApplyFilter('category', 'Healthtech')}>Healthtech</MenuItem>
+                    <MenuItem onClick={() => handleApplyFilter('category', 'Energia')}>Energia</MenuItem>
+                    <MenuItem onClick={() => handleApplyFilter('category', 'Edtech')}>Edtech</MenuItem>
+                  </Menu>
 
-                  {projectsLoading ? <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} /> : filteredProjects.length === 0 ? <Paper sx={{ p: 6, textAlign: 'center' }}><StorefrontIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 3 }} /><Typography variant="h5">Nenhum projeto</Typography><Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateProject}>Criar</Button></Paper> : projectsView === 'grid' ? (
+                  {projectsLoading ? <CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} /> : filteredProjects.length === 0 ? (
+                    <Paper sx={{ p: 6, textAlign: 'center' }}><StorefrontIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 3 }} /><Typography variant="h5">Nenhum projeto</Typography><Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateProject}>Criar</Button></Paper>
+                  ) : projectsView === 'grid' ? (
                     <Grid container spacing={3}>
                       {filteredProjects.map((project) => {
                         const investments = projectInvestments[project.id];
@@ -942,22 +1112,79 @@ export default function EntrepreneurPage() {
                         const progress = (totalInvested / project.targetAmount) * 100;
                         return (
                           <Grid item xs={12} md={6} key={project.id}>
-                            <Card><CardMedia component="img" height="200" image={project.image} /><CardContent><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="h6">{project.name}</Typography><Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} /></Box><Box sx={{ mt: 2 }}><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="caption">Arrecadado</Typography><Typography variant="caption" fontWeight={600}>Kz {formatCurrency(totalInvested)} / Kz {formatCurrency(project.targetAmount)}</Typography></Box><LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 6, borderRadius: 3, my: 1 }} /></Box><Grid container spacing={2} sx={{ mt: 1 }}><Grid item xs={6}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(project.targetAmount)}</Typography></Grid><Grid item xs={6}><Typography variant="caption">Investidores</Typography><Typography variant="subtitle2">{investors}</Typography></Grid><Grid item xs={6}><Typography variant="caption">Probabilidade IA</Typography><Typography variant="subtitle2" color="primary">{project.successProbability}%</Typography></Grid><Grid item xs={6}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{project.roi}%</Typography></Grid></Grid></CardContent><CardActions sx={{ display: 'flex', justifyContent: 'space-between', p: 2 }}><Button size="small" startIcon={<VisibilityIcon />} onClick={() => handleViewProject(project)}>Ver Detalhes</Button><ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} /></CardActions></Card>
+                            <Card>
+                              <CardMedia component="img" height="200" image={project.image} />
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <Typography variant="h6">{project.name}</Typography>
+                                  <Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} />
+                                </Box>
+                                <Box sx={{ mt: 2 }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                    <Typography variant="caption">Arrecadado</Typography>
+                                    <Typography variant="caption" fontWeight={600}>Kz {formatCurrency(totalInvested)} / Kz {formatCurrency(project.targetAmount)}</Typography>
+                                  </Box>
+                                  <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 6, borderRadius: 3, my: 1 }} />
+                                </Box>
+                                <Grid container spacing={2} sx={{ mt: 1 }}>
+                                  <Grid item xs={6}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(project.targetAmount)}</Typography></Grid>
+                                  <Grid item xs={6}><Typography variant="caption">Investidores</Typography><Typography variant="subtitle2">{investors}</Typography></Grid>
+                                  <Grid item xs={6}><Typography variant="caption">Probabilidade IA</Typography><Typography variant="subtitle2" color="primary">{project.successProbability}%</Typography></Grid>
+                                  <Grid item xs={6}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{project.roi}%</Typography></Grid>
+                                </Grid>
+                              </CardContent>
+                              <CardActions sx={{ display: 'flex', justifyContent: 'space-between', p: 2 }}>
+                                <Button size="small" startIcon={<VisibilityIcon />} onClick={() => handleViewProject(project)}>Ver Detalhes</Button>
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => handleEditProject(project)}>Editar</Button>
+                                <ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} />
+                              </CardActions>
+                            </Card>
                           </Grid>
                         );
                       })}
                     </Grid>
                   ) : (
                     <TableContainer component={Paper}>
-                      <Table><TableHead><TableRow><TableCell>Projeto</TableCell><TableCell>Categoria</TableCell><TableCell>Status</TableCell><TableCell align="right">Meta</TableCell><TableCell align="right">Arrecadado</TableCell><TableCell align="right">Investidores</TableCell><TableCell align="right">Ações</TableCell></TableRow></TableHead>
-                      <TableBody>{filteredProjects.map((project) => {
-                        const investments = projectInvestments[project.id];
-                        const totalInvested = investments?.totalInvestido || 0;
-                        const investors = investments?.investimentos?.length || 0;
-                        return (
-                          <TableRow key={project.id}><TableCell><Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}><Avatar src={project.image} variant="rounded" sx={{ width: 40, height: 40 }} /><Typography variant="subtitle2">{project.name}</Typography></Box></TableCell><TableCell>{project.category}</TableCell><TableCell><Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} /></TableCell><TableCell align="right">Kz {formatCurrency(project.targetAmount)}</TableCell><TableCell align="right">Kz {formatCurrency(totalInvested)}</TableCell><TableCell align="right">{investors}</TableCell><TableCell align="right"><IconButton size="small" onClick={() => handleViewProject(project)}><VisibilityIcon fontSize="small" /></IconButton><ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} /></TableCell></TableRow>
-                        );
-                      })}</TableBody></Table>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Projeto</TableCell>
+                            <TableCell>Categoria</TableCell>
+                            <TableCell>Status</TableCell>
+                            <TableCell align="right">Meta</TableCell>
+                            <TableCell align="right">Arrecadado</TableCell>
+                            <TableCell align="right">Investidores</TableCell>
+                            <TableCell align="right">Ações</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {filteredProjects.map((project) => {
+                            const investments = projectInvestments[project.id];
+                            const totalInvested = investments?.totalInvestido || 0;
+                            const investors = investments?.investimentos?.length || 0;
+                            return (
+                              <TableRow key={project.id}>
+                                <TableCell>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <Avatar src={project.image} variant="rounded" sx={{ width: 40, height: 40 }} />
+                                    <Typography variant="subtitle2">{project.name}</Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell>{project.category}</TableCell>
+                                <TableCell><Chip size="small" icon={getStatusIcon(project.status)} label={project.status} color={getStatusColor(project.status)} /></TableCell>
+                                <TableCell align="right">Kz {formatCurrency(project.targetAmount)}</TableCell>
+                                <TableCell align="right">Kz {formatCurrency(totalInvested)}</TableCell>
+                                <TableCell align="right">{investors}</TableCell>
+                                <TableCell align="right">
+                                  <IconButton size="small" onClick={() => handleViewProject(project)}><VisibilityIcon fontSize="small" /></IconButton>
+                                  <IconButton size="small" onClick={() => handleEditProject(project)}><EditIcon fontSize="small" /></IconButton>
+                                  <ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.ownerId} projectTitle={project.name} unreadCount={unreadMessagesByProject[project.id] || 0} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
                     </TableContainer>
                   )}
                 </Box>
@@ -966,33 +1193,520 @@ export default function EntrepreneurPage() {
 
             {currentTab === 3 && (
               <Fade in={true}>
-                <Box><Typography variant="h6" sx={{ mb: 3 }}>Configurações</Typography>
-                  <Grid container spacing={3}><Grid item xs={12} md={4}><Card><CardContent sx={{ textAlign: 'center' }}><Avatar src={entrepreneur.avatar} sx={{ width: 120, height: 120, mx: 'auto', mb: 2, border: '3px solid', borderColor: 'primary.main' }} /><Typography variant="h6">{entrepreneur.name}</Typography><Typography variant="body2" color="text.secondary">{entrepreneur.email}</Typography><Chip label={entrepreneur.status} color={entrepreneur.status === 'Ativo' ? 'success' : 'warning'} sx={{ mt: 1 }} /></CardContent></Card></Grid>
-                  <Grid item xs={12} md={8}><Card><CardContent><Typography variant="subtitle1" sx={{ mb: 3 }}>Informações Pessoais</Typography><Grid container spacing={3}><Grid item xs={12}><TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} /></Grid><Grid item xs={12}><TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={4} /></Grid></Grid><Box sx={{ mt: 3, textAlign: 'right' }}><Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>{profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}</Button></Box></CardContent></Card></Grid></Grid></Box>
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 3 }}>Configurações</Typography>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={4}>
+                      <Card>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Avatar src={entrepreneur.avatar} sx={{ width: 120, height: 120, mx: 'auto', mb: 2, border: '3px solid', borderColor: 'primary.main' }} />
+                          <Typography variant="h6">{entrepreneur.name}</Typography>
+                          <Typography variant="body2" color="text.secondary">{entrepreneur.email}</Typography>
+                          <Chip label={entrepreneur.status} color={entrepreneur.status === 'Ativo' ? 'success' : 'warning'} sx={{ mt: 1 }} />
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <Card>
+                        <CardContent>
+                          <Typography variant="subtitle1" sx={{ mb: 3 }}>Informações Pessoais</Typography>
+                          <Grid container spacing={3}>
+                            <Grid item xs={12}>
+                              <TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} />
+                            </Grid>
+                            <Grid item xs={12}>
+                              <TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={4} />
+                            </Grid>
+                          </Grid>
+                          <Box sx={{ mt: 3, textAlign: 'right' }}>
+                            <Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>
+                              {profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
               </Fade>
             )}
           </Box>
         </Box>
 
+        {/* Diálogo de Detalhes do Projeto */}
         <Dialog open={openProjectDialog} onClose={() => setOpenProjectDialog(false)} maxWidth="md" fullWidth>
-          {selectedProject && (<><DialogTitle>Detalhes do Projeto</DialogTitle><DialogContent><Box component="img" src={selectedProject.image} sx={{ width: '100%', height: 250, objectFit: 'cover', borderRadius: 2, mb: 2 }} /><Typography variant="h5">{selectedProject.name}</Typography><Typography variant="body2" color="text.secondary" gutterBottom>Categoria: {selectedProject.category}</Typography><Typography variant="body1" paragraph>{selectedProject.description}</Typography><Grid container spacing={3}><Grid item xs={6}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(selectedProject.targetAmount)}</Typography></Grid><Grid item xs={6}><Typography variant="caption">Arrecadado</Typography><Typography variant="subtitle2" color="success.main">Kz {formatCurrency(selectedProject.raisedAmount)}</Typography></Grid><Grid item xs={6}><Typography variant="caption">Probabilidade IA</Typography><Typography variant="subtitle2" color="primary">{selectedProject.successProbability}%</Typography></Grid><Grid item xs={6}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{selectedProject.roi}%</Typography></Grid></Grid>{projectInvestments[selectedProject.id]?.investimentos?.length > 0 && (<Box sx={{ mt: 3 }}><Typography variant="subtitle2" sx={{ mb: 2 }}>Investidores</Typography><Stack spacing={1}>{projectInvestments[selectedProject.id].investimentos.map((inv, idx) => (<Paper key={idx} variant="outlined" sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}><Avatar>{inv.investor?.Nome?.charAt(0) || 'I'}</Avatar><Box><Typography variant="body2" fontWeight={600}>{inv.investor?.Nome || 'Investidor'}</Typography><Typography variant="caption" color="text.secondary">Investiu em: {new Date(inv.createdAt).toLocaleDateString('pt-AO')}</Typography></Box></Box><Typography variant="subtitle2" fontWeight={600}>Kz {formatCurrency(inv.amount)}</Typography></Paper>))}</Stack></Box>)}<Button fullWidth variant="contained" startIcon={<ChatIcon />} onClick={() => { setOpenProjectDialog(false); handleOpenChat(selectedProject); }} sx={{ mt: 3 }}>Conversar com Investidores</Button></DialogContent><DialogActions><Button onClick={() => setOpenProjectDialog(false)}>Fechar</Button></DialogActions></>)}
+          {selectedProject && (
+            <>
+              <DialogTitle>Detalhes do Projeto</DialogTitle>
+              <DialogContent>
+                <Box component="img" src={selectedProject.image} sx={{ width: '100%', height: 250, objectFit: 'cover', borderRadius: 2, mb: 2 }} />
+                <Typography variant="h5">{selectedProject.name}</Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>Categoria: {selectedProject.category}</Typography>
+                
+                {/* Seção Problemática, Público-Alvo e Solução */}
+                {(selectedProject.problematica || selectedProject.publicoAlvo || selectedProject.solucao) && (
+                  <Paper variant="outlined" sx={{ p: 2, my: 2, bgcolor: 'grey.50' }}>
+                    <Grid container spacing={2}>
+                      {selectedProject.problematica && (
+                        <Grid item xs={12}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <ErrorOutlineIcon color="error" sx={{ mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Problemática</Typography>
+                              <Typography variant="body2">{selectedProject.problematica}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {selectedProject.publicoAlvo && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <GroupsIcon2 color="primary" sx={{ mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Público-Alvo</Typography>
+                              <Typography variant="body2">{selectedProject.publicoAlvo}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {selectedProject.solucao && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <LightbulbIcon sx={{ color: '#f59e0b', mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Solução Proposta</Typography>
+                              <Typography variant="body2">{selectedProject.solucao}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                )}
+                
+                <Typography variant="body1" paragraph>{selectedProject.description}</Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={6}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(selectedProject.targetAmount)}</Typography></Grid>
+                  <Grid item xs={6}><Typography variant="caption">Arrecadado</Typography><Typography variant="subtitle2" color="success.main">Kz {formatCurrency(selectedProject.raisedAmount)}</Typography></Grid>
+                  <Grid item xs={6}><Typography variant="caption">Probabilidade IA</Typography><Typography variant="subtitle2" color="primary">{selectedProject.successProbability}%</Typography></Grid>
+                  <Grid item xs={6}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{selectedProject.roi} Kz</Typography></Grid>
+                </Grid>
+                {projectInvestments[selectedProject.id]?.investimentos?.length > 0 && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 2 }}>Investidores</Typography>
+                    <Stack spacing={1}>
+                      {projectInvestments[selectedProject.id].investimentos.map((inv, idx) => (
+                        <Paper key={idx} variant="outlined" sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Avatar>{inv.investor?.Nome?.charAt(0) || 'I'}</Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight={600}>{inv.investor?.Nome || 'Investidor'}</Typography>
+                              <Typography variant="caption" color="text.secondary">Investiu em: {new Date(inv.createdAt).toLocaleDateString('pt-AO')}</Typography>
+                            </Box>
+                          </Box>
+                          <Typography variant="subtitle2" fontWeight={600}>Kz {formatCurrency(inv.amount)}</Typography>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+                <Button fullWidth variant="contained" startIcon={<ChatIcon />} onClick={() => { setOpenProjectDialog(false); handleOpenChat(selectedProject); }} sx={{ mt: 3 }}>
+                  Conversar com Investidores
+                </Button>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenProjectDialog(false)}>Fechar</Button>
+              </DialogActions>
+            </>
+          )}
         </Dialog>
 
+        {/* Diálogo de Criação de Projeto */}
         <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} maxWidth="md" fullWidth>
           <DialogTitle>Criar Projeto</DialogTitle>
-          <DialogContent><Stepper activeStep={createStep} orientation="vertical"><Step><StepLabel>Informações Básicas</StepLabel><StepContent><Grid container spacing={2}><Grid item xs={12}><TextField fullWidth label="Nome" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required /></Grid><Grid item xs={12}><TextField fullWidth label="Descrição" value={newProject.description} onChange={(e) => setNewProject({ ...newProject, description: e.target.value })} multiline rows={4} required /></Grid><Grid item xs={6}><FormControl fullWidth><InputLabel>Categoria</InputLabel><Select value={newProject.category} onChange={(e) => setNewProject({ ...newProject, category: e.target.value })}><MenuItem value="Agrotech">Agrotech</MenuItem><MenuItem value="Healthtech">Healthtech</MenuItem><MenuItem value="Energia">Energia</MenuItem><MenuItem value="Edtech">Edtech</MenuItem><MenuItem value="Outro">Outro</MenuItem></Select></FormControl></Grid><Grid item xs={6}><Button variant="outlined" component="label" startIcon={<CloudUploadIcon />} fullWidth sx={{ height: 56 }} disabled={uploading}>{uploading ? 'Enviando...' : (selectedImage ? selectedImage.name : 'Upload')}<input type="file" hidden accept="image/*" onChange={handleImageChange} disabled={uploading} /></Button>{imagePreview && <img src={imagePreview} alt="Preview" style={{ width: '100%', maxHeight: 100, marginTop: 8, borderRadius: 4 }} />}</Grid></Grid><Box sx={{ mt: 2 }}><Button variant="contained" onClick={handleNextStep} disabled={!newProject.name || !newProject.description || !newProject.category || !selectedImage || uploading}>Continuar</Button></Box></StepContent></Step><Step><StepLabel>Detalhes Financeiros</StepLabel><StepContent><Grid container spacing={2}><Grid item xs={6}><TextField fullWidth label="Meta (Kz)" type="number" value={newProject.targetAmount} onChange={(e) => setNewProject({ ...newProject, targetAmount: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }} required /></Grid><Grid item xs={6}><TextField fullWidth label="ROI (%)" type="number" value={newProject.expectedRoi} onChange={(e) => setNewProject({ ...newProject, expectedRoi: e.target.value })} InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} required /></Grid><Grid item xs={6}><TextField fullWidth label="Duração (dias)" type="number" value={newProject.duration} onChange={(e) => setNewProject({ ...newProject, duration: e.target.value })} required /></Grid><Grid item xs={12}><TextField fullWidth label="Pitch" value={newProject.pitch} onChange={(e) => setNewProject({ ...newProject, pitch: e.target.value })} multiline rows={2} /></Grid></Grid><Box sx={{ mt: 2 }}><Button variant="outlined" onClick={handlePrevStep} sx={{ mr: 1 }}>Voltar</Button><Button variant="contained" onClick={handleSubmitProject} disabled={!newProject.targetAmount || !newProject.expectedRoi || !newProject.duration || submitting}>{submitting ? <CircularProgress size={24} /> : 'Enviar'}</Button></Box></StepContent></Step></Stepper></DialogContent>
+          <DialogContent>
+            <Stepper activeStep={createStep} orientation="vertical">
+              {/* Passo 1: Informações Básicas */}
+              <Step>
+                <StepLabel>Informações Básicas</StepLabel>
+                <StepContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField fullWidth label="Nome do Projeto" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField fullWidth label="Descrição Completa" value={newProject.description} onChange={(e) => setNewProject({ ...newProject, description: e.target.value })} multiline rows={4} required />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Categoria</InputLabel>
+                        <Select value={newProject.category} onChange={(e) => setNewProject({ ...newProject, category: e.target.value })}>
+                          <MenuItem value="Agrotech">Agrotech</MenuItem>
+                          <MenuItem value="Healthtech">Healthtech</MenuItem>
+                          <MenuItem value="Energia">Energia</MenuItem>
+                          <MenuItem value="Edtech">Edtech</MenuItem>
+                          <MenuItem value="Outro">Outro</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Button variant="outlined" component="label" startIcon={<CloudUploadIcon />} fullWidth sx={{ height: 56 }} disabled={uploading}>
+                        {uploading ? 'Enviando...' : (selectedImage ? selectedImage.name : 'Upload Imagem')}
+                        <input type="file" hidden accept="image/*" onChange={handleImageChange} disabled={uploading} />
+                      </Button>
+                      {imagePreview && <img src={imagePreview} alt="Preview" style={{ width: '100%', maxHeight: 100, marginTop: 8, borderRadius: 4 }} />}
+                    </Grid>
+                  </Grid>
+                  <Box sx={{ mt: 2 }}>
+                    <Button variant="contained" onClick={handleNextStep} disabled={!newProject.name || !newProject.description || !newProject.category || !selectedImage || uploading}>
+                      Continuar
+                    </Button>
+                  </Box>
+                </StepContent>
+              </Step>
+
+              {/* Passo 2: Problemática, Público-Alvo e Solução (NOVO) */}
+              <Step>
+                <StepLabel>Problemática & Solução</StepLabel>
+                <StepContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField 
+                        fullWidth 
+                        label="Problemática" 
+                        placeholder="Qual a dor que seu projeto resolve? Ex: '30% dos caminhões voltam vazios na BR-116'"
+                        value={newProject.problematica} 
+                        onChange={(e) => setNewProject({ ...newProject, problematica: e.target.value })} 
+                        multiline 
+                        rows={2}
+                        required
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <ErrorOutlineIcon color="error" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField 
+                        fullWidth 
+                        label="Público-Alvo" 
+                        placeholder="Quem são os clientes? Ex: '10.000 clínicas de médio porte no Sudeste'"
+                        value={newProject.publicoAlvo} 
+                        onChange={(e) => setNewProject({ ...newProject, publicoAlvo: e.target.value })} 
+                        multiline 
+                        rows={2}
+                        required
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <GroupsIcon2 color="primary" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField 
+                        fullWidth 
+                        label="Solução Proposta" 
+                        placeholder="Como seu produto/serviço resolve o problema?"
+                        value={newProject.solucao} 
+                        onChange={(e) => setNewProject({ ...newProject, solucao: e.target.value })} 
+                        multiline 
+                        rows={2}
+                        required
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <LightbulbIcon sx={{ color: '#f59e0b' }} />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                  <Box sx={{ mt: 2 }}>
+                    <Button variant="outlined" onClick={handlePrevStep} sx={{ mr: 1 }}>Voltar</Button>
+                    <Button variant="contained" onClick={handleNextStep}>
+                      Continuar
+                    </Button>
+                  </Box>
+                </StepContent>
+              </Step>
+
+              {/* Passo 3: Detalhes Financeiros */}
+              <Step>
+                <StepLabel>Detalhes Financeiros</StepLabel>
+                <StepContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <TextField fullWidth label="Meta (Kz)" type="number" value={newProject.targetAmount} onChange={(e) => setNewProject({ ...newProject, targetAmount: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }} required />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField fullWidth label="ROI Estimado (Kz)" type="number" value={newProject.expectedRoi} onChange={(e) => setNewProject({ ...newProject, expectedRoi: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }} required />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField fullWidth label="Duração (dias)" type="number" value={newProject.duration} onChange={(e) => setNewProject({ ...newProject, duration: e.target.value })} required />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField fullWidth label="Resumo/Pitch" value={newProject.pitch} onChange={(e) => setNewProject({ ...newProject, pitch: e.target.value })} multiline rows={2} />
+                    </Grid>
+                  </Grid>
+                  <Box sx={{ mt: 2 }}>
+                    <Button variant="outlined" onClick={handlePrevStep} sx={{ mr: 1 }}>Voltar</Button>
+                    <Button variant="contained" onClick={handleSubmitProject} disabled={!newProject.targetAmount || !newProject.expectedRoi || !newProject.duration || submitting}>
+                      {submitting ? <CircularProgress size={24} /> : 'Enviar Projeto'}
+                    </Button>
+                  </Box>
+                </StepContent>
+              </Step>
+            </Stepper>
+          </DialogContent>
         </Dialog>
 
+        {/* Diálogo de Edição de Projeto */}
+        <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EditIcon color="primary" />
+              <Typography variant="h6">Editar Projeto: {editingProject?.name}</Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+              {/* Imagem do Projeto */}
+              <Grid item xs={12}>
+                <Box sx={{ textAlign: 'center', mb: 2 }}>
+                  {editImagePreview && (
+                    <img 
+                      src={editImagePreview} 
+                      alt="Preview" 
+                      style={{ 
+                        width: '100%', 
+                        maxHeight: 200, 
+                        objectFit: 'cover', 
+                        borderRadius: 8,
+                        marginBottom: 16 
+                      }} 
+                    />
+                  )}
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<CloudUploadIcon />}
+                    disabled={editUploading}
+                  >
+                    {editUploading ? 'Enviando...' : (editSelectedImage ? 'Nova imagem selecionada' : 'Alterar imagem')}
+                    <input type="file" hidden accept="image/*" onChange={handleEditImageChange} />
+                  </Button>
+                </Box>
+              </Grid>
+
+              {/* Nome do Projeto */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Nome do Projeto"
+                  value={editProjectData.Nome}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, Nome: e.target.value })}
+                  required
+                />
+              </Grid>
+
+              {/* Categoria */}
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Categoria</InputLabel>
+                  <Select
+                    value={editProjectData.Categ}
+                    onChange={(e) => setEditProjectData({ ...editProjectData, Categ: e.target.value })}
+                  >
+                    <MenuItem value="Agrotech">Agrotech</MenuItem>
+                    <MenuItem value="Healthtech">Healthtech</MenuItem>
+                    <MenuItem value="Energia">Energia</MenuItem>
+                    <MenuItem value="Edtech">Edtech</MenuItem>
+                    <MenuItem value="Outro">Outro</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Duração */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Duração (dias)"
+                  type="number"
+                  value={editProjectData.DuracaoProjecto}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, DuracaoProjecto: e.target.value })}
+                  required
+                />
+              </Grid>
+
+              {/* Meta e ROI */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Meta (Kz)"
+                  type="number"
+                  value={editProjectData.ValorProjecto}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, ValorProjecto: e.target.value })}
+                  InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }}
+                  required
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="ROI Estimado (Kz)"
+                  type="number"
+                  value={editProjectData.ReceitaEstimada}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, ReceitaEstimada: e.target.value })}
+                  InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }}
+                  required
+                />
+              </Grid>
+
+              {/* Problemática */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Problemática"
+                  value={editProjectData.Problematica}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, Problematica: e.target.value })}
+                  multiline
+                  rows={2}
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <ErrorOutlineIcon color="error" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Público-Alvo */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Público-Alvo"
+                  value={editProjectData.PublicoAlvo}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, PublicoAlvo: e.target.value })}
+                  multiline
+                  rows={2}
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <GroupsIcon2 color="primary" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Solução */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Solução Proposta"
+                  value={editProjectData.Solucao}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, Solucao: e.target.value })}
+                  multiline
+                  rows={2}
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LightbulbIcon sx={{ color: '#f59e0b' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Resumo/Pitch */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Resumo/Pitch"
+                  value={editProjectData.Resumo}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, Resumo: e.target.value })}
+                  multiline
+                  rows={2}
+                  required
+                />
+              </Grid>
+
+              {/* Descrição Completa */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Descrição Completa"
+                  value={editProjectData.Content}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, Content: e.target.value })}
+                  multiline
+                  rows={4}
+                  required
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenEditDialog(false)} startIcon={<CancelIcon />}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSaveEdit} 
+              disabled={editUploading || !editProjectData.Nome || !editProjectData.Categ || !editProjectData.ValorProjecto || !editProjectData.Problematica || !editProjectData.PublicoAlvo || !editProjectData.Solucao}
+              startIcon={<SaveIcon />}
+            >
+              {editUploading ? <CircularProgress size={24} /> : 'Salvar Alterações'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Diálogo de Configurações */}
         <Dialog open={openSettingsDialog} onClose={() => setOpenSettingsDialog(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Editar Perfil</DialogTitle>
-          <DialogContent><Grid container spacing={3}><Grid item xs={12} sx={{ textAlign: 'center' }}><Avatar src={entrepreneur.avatar} sx={{ width: 100, height: 100, mx: 'auto', border: '2px solid', borderColor: 'primary.main' }} /></Grid><Grid item xs={12}><TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} /></Grid><Grid item xs={12}><TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={3} /></Grid></Grid></DialogContent>
-          <DialogActions><Button onClick={() => setOpenSettingsDialog(false)}>Cancelar</Button><Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>{profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}</Button></DialogActions>
+          <DialogContent>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sx={{ textAlign: 'center' }}>
+                <Avatar src={entrepreneur.avatar} sx={{ width: 100, height: 100, mx: 'auto', border: '2px solid', borderColor: 'primary.main' }} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={3} />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenSettingsDialog(false)}>Cancelar</Button>
+            <Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>
+              {profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}
+            </Button>
+          </DialogActions>
         </Dialog>
 
-        <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}><Alert severity={snackbar.severity} variant="filled">{snackbar.message}</Alert></Snackbar>
+        {/* Snackbar para notificações */}
+        <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          <Alert severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
+        </Snackbar>
 
-        <Fab color="primary" sx={{ position: 'fixed', bottom: 32, right: 32 }} onClick={handleCreateProject}><AddIcon /></Fab>
+        {/* FAB Button para criar projeto */}
+        <Fab color="primary" sx={{ position: 'fixed', bottom: 32, right: 32 }} onClick={handleCreateProject}>
+          <AddIcon />
+        </Fab>
 
+        {/* Chat Button flutuante se necessário */}
         {selectedChatProject && (
           <ChatButton
             projectId={selectedChatProject.id}

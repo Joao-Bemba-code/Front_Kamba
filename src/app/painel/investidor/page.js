@@ -45,8 +45,6 @@ import {
   Snackbar,
   Tooltip,
   Stack,
-  Tab,
-  Tabs,
   CircularProgress,
   Fade,
   Zoom,
@@ -59,8 +57,6 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import PendingIcon from '@mui/icons-material/Pending';
-import WarningIcon from '@mui/icons-material/Warning';
 import EditIcon from '@mui/icons-material/Edit';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CloseIcon from '@mui/icons-material/Close';
@@ -73,6 +69,9 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ChatIcon from '@mui/icons-material/Chat';
 import SendIcon from '@mui/icons-material/Send';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import GroupsIcon2 from '@mui/icons-material/Groups';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
 
 import axios from "axios";
 
@@ -95,7 +94,6 @@ const formatCurrency = (value) => {
   }).format(value);
 };
 
-// Componente Chat
 const ChatComponent = ({ projectId, currentUserId, projectOwnerId, projectTitle, onClose, onUnreadCount }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -414,11 +412,19 @@ export default function InvestorProfile() {
     setProjectsLoading(true);
     try {
       const response = await axios.get(`${API_BASE_URL}/project/projectos-all`, { timeout: 10000 });
-      if (response.data && response.data.projets) {
-        const activeProjects = response.data.projets.filter(p => p.Status === 'Ativo');
-        setProjects(activeProjects);
-        setFilteredProjects(activeProjects);
+      
+      let projetosData = [];
+      if (response.data && response.data.projects) {
+        projetosData = response.data.projects;
+      } else if (response.data && response.data.projets) {
+        projetosData = response.data.projets;
+      } else if (Array.isArray(response.data)) {
+        projetosData = response.data;
       }
+      
+      const activeProjects = projetosData.filter(p => p.Status === 'Ativo');
+      setProjects(activeProjects);
+      setFilteredProjects(activeProjects);
     } catch (error) {
       console.error('Erro:', error);
       setSnackbar({ open: true, message: 'Erro ao carregar projetos', severity: 'error' });
@@ -454,7 +460,9 @@ export default function InvestorProfile() {
         setTotalUnreadMessages(response.data.totalUnread);
         const counts = {};
         response.data.conversations.forEach(conv => {
-          counts[conv.project.id] = conv.unreadCount;
+          if (conv.project && conv.project.id) {
+            counts[conv.project.id] = conv.unreadCount;
+          }
         });
         setUnreadMessagesByProject(counts);
       }
@@ -517,6 +525,18 @@ export default function InvestorProfile() {
   };
 
   const handleOpenInvestDialog = (project) => {
+    const valorArrecadado = project.ValorArrecadado || 0;
+    const valorMeta = project.ValorProjecto || 0;
+    
+    if (valorArrecadado >= valorMeta) {
+      setSnackbar({ 
+        open: true, 
+        message: 'Este projeto já atingiu a meta de arrecadação e não aceita mais investimentos.', 
+        severity: 'warning' 
+      });
+      return;
+    }
+    
     setSelectedProject(project);
     setInvestAmount('10000');
     setOpenInvestDialog(true);
@@ -588,9 +608,9 @@ export default function InvestorProfile() {
 
   const getRiskLabel = (probability) => {
     const prob = parseFloat(probability);
-    if (prob >= 70) return 'Baixo';
-    if (prob >= 40) return 'Médio';
-    return 'Alto';
+    if (prob >= 70) return 'Baixo Risco';
+    if (prob >= 40) return 'Médio Risco';
+    return 'Alto Risco';
   };
 
   if (!mounted) return null;
@@ -696,31 +716,118 @@ export default function InvestorProfile() {
                     <Typography variant="h6">Projetos Disponíveis</Typography>
                     <Button variant="outlined" startIcon={<FilterListIcon />} onClick={handleFilterClick}>Filtrar</Button>
                   </Box>
-                  <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={handleFilterClose}><MenuItem disabled>Categoria</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'todos')}>Todos</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Agrotech')}>Agrotech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Healthtech')}>Healthtech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Energia')}>Energia</MenuItem></Menu>
+                  <Menu anchorEl={filterAnchorEl} open={Boolean(filterAnchorEl)} onClose={handleFilterClose}><MenuItem disabled>Categoria</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'todos')}>Todos</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Agrotech')}>Agrotech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Healthtech')}>Healthtech</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Energia')}>Energia</MenuItem><MenuItem onClick={() => handleApplyFilter('category', 'Edtech')}>Edtech</MenuItem></Menu>
 
                   {projectsLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box> : filteredProjects.length === 0 ? <Paper sx={{ p: 6, textAlign: 'center' }}><StorefrontIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 3 }} /><Typography variant="h5">Nenhum projeto disponível</Typography></Paper> : (
                     <Grid container spacing={3}>
                       {filteredProjects.map((project) => {
                         const probability = parseFloat(project.ProbalidadeAi) || 0;
                         const roi = project.ReceitaEstimada || 0;
-                        const progress = (project.ValorArrecadado / project.ValorProjecto) * 100 || 0;
+                        const valorArrecadado = project.ValorArrecadado || 0;
+                        const valorMeta = project.ValorProjecto || 1;
+                        const progress = (valorArrecadado / valorMeta) * 100;
+                        const metaAtingida = valorArrecadado >= valorMeta;
                         const unreadCount = unreadMessagesByProject[project.id] || 0;
                         
                         return (
-                          <Grid item xs={12} md={6} key={project.id}>
-                            <Card>
-                              <CardMedia component="img" height="200" image={project.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} />
-                              <CardContent>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}><Typography variant="h6">{project.Nome}</Typography><Chip size="small" label={getRiskLabel(probability)} color={getRiskColor(probability)} /></Box>
-                                <Typography variant="body2" color="text.secondary" paragraph>{project.Resumo || project.Content?.substring(0, 100)}</Typography>
-                                <Box sx={{ mb: 2 }}><Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="caption">Probabilidade de Sucesso</Typography><Typography variant="caption" fontWeight={600}>{probability}%</Typography></Box><LinearProgress variant="determinate" value={probability} sx={{ height: 6, borderRadius: 3 }} /></Box>
-                                <Grid container spacing={2}><Grid item xs={6}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(project.ValorProjecto)}</Typography></Grid><Grid item xs={6}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{roi}%</Typography></Grid><Grid item xs={6}><Typography variant="caption">Arrecadado</Typography><Typography variant="subtitle2">{progress.toFixed(0)}%</Typography></Grid><Grid item xs={6}><Typography variant="caption">Categoria</Typography><Typography variant="subtitle2">{project.Categ}</Typography></Grid></Grid>
-                                <Box sx={{ display: 'flex', gap: 1, mt: 3 }}>
-                                  <Button variant="outlined" fullWidth startIcon={<VisibilityIcon />} onClick={() => handleViewProjectDetail(project)}>Ver</Button>
-                                  <Button variant="contained" fullWidth startIcon={<AttachMoneyIcon />} onClick={() => handleOpenInvestDialog(project)}>Investir</Button>
-                                  <ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.Iduser || project.iduser} projectTitle={project.Nome} unreadCount={unreadCount} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} />
-                                </Box>
-                              </CardContent>
+                          <Grid item xs={12} key={project.id}>
+                            <Card sx={{ opacity: metaAtingida ? 0.9 : 1 }}>
+                              <Grid container>
+                                <Grid item xs={12} md={4}>
+                                  <Box sx={{ position: 'relative', height: '100%' }}>
+                                    <CardMedia component="img" image={project.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} sx={{ height: '100%', minHeight: 240, objectFit: 'cover', filter: metaAtingida ? 'grayscale(0.3)' : 'none' }} />
+                                    {metaAtingida && (
+                                      <Chip label="META ATINGIDA" color="success" sx={{ position: 'absolute', top: 16, right: 16, fontWeight: 700, bgcolor: 'success.main', color: 'white' }} />
+                                    )}
+                                  </Box>
+                                </Grid>
+                                <Grid item xs={12} md={8}>
+                                  <CardContent>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, alignItems: 'center' }}>
+                                      <Typography variant="h6">{project.Nome}</Typography>
+                                      <Stack direction="row" spacing={1}>
+                                        {metaAtingida && <Chip size="small" icon={<CheckCircleIcon />} label="Meta Atingida" color="success" />}
+                                        <Chip size="small" label={getRiskLabel(probability)} color={getRiskColor(probability)} />
+                                      </Stack>
+                                    </Box>
+                                    <Typography variant="body2" color="text.secondary" paragraph>{project.Resumo || project.Content?.substring(0, 120)}</Typography>
+                                    
+                                    {(project.Problematica || project.PublicoAlvo || project.Publico || project.Solucao) && (
+                                      <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'grey.50' }}>
+                                        <Grid container spacing={1}>
+                                          {project.Problematica && (
+                                            <Grid item xs={12}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <ErrorOutlineIcon color="error" sx={{ fontSize: 16, mt: 0.2 }} />
+                                                <Typography variant="caption">{project.Problematica.substring(0, 80)}...</Typography>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                          {(project.PublicoAlvo || project.Publico) && (
+                                            <Grid item xs={12} sm={6}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <GroupsIcon2 color="primary" sx={{ fontSize: 16, mt: 0.2 }} />
+                                                <Typography variant="caption">{(project.PublicoAlvo || project.Publico).substring(0, 60)}...</Typography>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                          {project.Solucao && (
+                                            <Grid item xs={12} sm={6}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <LightbulbIcon sx={{ color: '#f59e0b', fontSize: 16, mt: 0.2 }} />
+                                                <Typography variant="caption">{project.Solucao.substring(0, 60)}...</Typography>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                        </Grid>
+                                      </Paper>
+                                    )}
+                                    
+                                    <Box sx={{ mb: 2 }}>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                        <Typography variant="caption">Arrecadado: Kz {formatCurrency(valorArrecadado)} / Kz {formatCurrency(valorMeta)}</Typography>
+                                        <Typography variant="caption" fontWeight={600} color={metaAtingida ? 'success.main' : 'text.secondary'}>
+                                          {progress.toFixed(1)}%
+                                        </Typography>
+                                      </Box>
+                                      <LinearProgress variant="determinate" value={Math.min(progress, 100)} sx={{ height: 8, borderRadius: 4, bgcolor: 'grey.200', '& .MuiLinearProgress-bar': { bgcolor: metaAtingida ? 'success.main' : 'primary.main' } }} />
+                                    </Box>
+                                    
+                                    <Box sx={{ mb: 2 }}>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                        <Typography variant="caption">Probabilidade de Sucesso (IA)</Typography>
+                                        <Typography variant="caption" fontWeight={600}>{probability}%</Typography>
+                                      </Box>
+                                      <LinearProgress variant="determinate" value={probability} sx={{ height: 6, borderRadius: 3 }} />
+                                    </Box>
+                                    
+                                    <Grid container spacing={2}>
+                                      <Grid item xs={6} sm={3}><Typography variant="caption">Meta</Typography><Typography variant="subtitle2">Kz {formatCurrency(valorMeta)}</Typography></Grid>
+                                      <Grid item xs={6} sm={3}><Typography variant="caption">ROI</Typography><Typography variant="subtitle2" color="success.main">{roi}%</Typography></Grid>
+                                      <Grid item xs={6} sm={3}><Typography variant="caption">Arrecadado</Typography><Typography variant="subtitle2" color={metaAtingida ? 'success.main' : 'text.primary'}>{progress.toFixed(0)}%</Typography></Grid>
+                                      <Grid item xs={6} sm={3}><Typography variant="caption">Categoria</Typography><Typography variant="subtitle2">{project.Categ}</Typography></Grid>
+                                    </Grid>
+                                    
+                                    <Box sx={{ display: 'flex', gap: 1, mt: 3 }}>
+                                      <Button variant="outlined" startIcon={<VisibilityIcon />} onClick={() => handleViewProjectDetail(project)}>Ver Detalhes</Button>
+                                      
+                                      {metaAtingida ? (
+                                        <Tooltip title="Este projeto já atingiu a meta de arrecadação e não aceita mais investimentos">
+                                          <span style={{ flex: 1 }}>
+                                            <Button variant="contained" fullWidth disabled startIcon={<CheckCircleIcon />} sx={{ bgcolor: 'success.main', '&.Mui-disabled': { bgcolor: 'success.light', color: 'white' } }}>
+                                              Meta Atingida
+                                            </Button>
+                                          </span>
+                                        </Tooltip>
+                                      ) : (
+                                        <Button variant="contained" startIcon={<AttachMoneyIcon />} onClick={() => handleOpenInvestDialog(project)}>Investir</Button>
+                                      )}
+                                      
+                                      <ChatButton projectId={project.id} currentUserId={userData.id} projectOwnerId={project.Iduser || project.iduser} projectTitle={project.Nome} unreadCount={unreadCount} onUnreadCountChange={(count) => handleUnreadCountChange(project.id, count)} />
+                                    </Box>
+                                  </CardContent>
+                                </Grid>
+                              </Grid>
                             </Card>
                           </Grid>
                         );
@@ -772,16 +879,88 @@ export default function InvestorProfile() {
             <>
               <DialogTitle><Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">Detalhes do Projeto</Typography><IconButton onClick={() => setOpenProjectDialog(false)}><CloseIcon /></IconButton></Box></DialogTitle>
               <DialogContent dividers>
-                <Box component="img" src={selectedProjectDetail.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} sx={{ width: '100%', height: 250, objectFit: 'cover', borderRadius: 2, mb: 2 }} />
+                <Box sx={{ position: 'relative' }}>
+                  <Box component="img" src={selectedProjectDetail.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} sx={{ width: '100%', height: 250, objectFit: 'cover', borderRadius: 2, mb: 2 }} />
+                  {(selectedProjectDetail.ValorArrecadado >= selectedProjectDetail.ValorProjecto) && (
+                    <Chip label="META ATINGIDA" color="success" sx={{ position: 'absolute', top: 16, right: 16, fontWeight: 700 }} />
+                  )}
+                </Box>
                 <Typography variant="h5">{selectedProjectDetail.Nome}</Typography>
                 <Typography variant="body2" color="text.secondary" gutterBottom>Categoria: {selectedProjectDetail.Categ}</Typography>
+                
+                {(selectedProjectDetail.Problematica || selectedProjectDetail.PublicoAlvo || selectedProjectDetail.Publico || selectedProjectDetail.Solucao) && (
+                  <Paper variant="outlined" sx={{ p: 2, my: 2, bgcolor: 'grey.50' }}>
+                    <Grid container spacing={2}>
+                      {selectedProjectDetail.Problematica && (
+                        <Grid item xs={12}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <ErrorOutlineIcon color="error" sx={{ mt: 0.3 }} />
+                            <Box><Typography variant="subtitle2" fontWeight={600}>Problemática</Typography><Typography variant="body2">{selectedProjectDetail.Problematica}</Typography></Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {(selectedProjectDetail.PublicoAlvo || selectedProjectDetail.Publico) && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <GroupsIcon2 color="primary" sx={{ mt: 0.3 }} />
+                            <Box><Typography variant="subtitle2" fontWeight={600}>Público-Alvo</Typography><Typography variant="body2">{selectedProjectDetail.PublicoAlvo || selectedProjectDetail.Publico}</Typography></Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {selectedProjectDetail.Solucao && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <LightbulbIcon sx={{ color: '#f59e0b', mt: 0.3 }} />
+                            <Box><Typography variant="subtitle2" fontWeight={600}>Solução Proposta</Typography><Typography variant="body2">{selectedProjectDetail.Solucao}</Typography></Box>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                )}
+                
                 <Typography variant="body1" paragraph>{selectedProjectDetail.Content || selectedProjectDetail.Resumo}</Typography>
+                
                 <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}><Paper variant="outlined" sx={{ p: 3 }}><Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Informações Financeiras</Typography><Stack spacing={2}><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Meta</Typography><Typography variant="body2">Kz {formatCurrency(selectedProjectDetail.ValorProjecto)}</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Arrecadado</Typography><Typography variant="body2" color="success.main">Kz {formatCurrency(selectedProjectDetail.ValorArrecadado || 0)}</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">ROI</Typography><Typography variant="body2" color="success.main">{selectedProjectDetail.ReceitaEstimada || 0}%</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Duração</Typography><Typography variant="body2">{selectedProjectDetail.DuracaoProjecto || 0} dias</Typography></Box></Stack></Paper></Grid>
-                  <Grid item xs={12} md={6}><Paper variant="outlined" sx={{ p: 3 }}><Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Análise de IA</Typography><Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}><Typography variant="h3" color="primary">{selectedProjectDetail.ProbalidadeAi || 0}%</Typography><Typography variant="body2">Probabilidade de Sucesso</Typography></Box><LinearProgress variant="determinate" value={parseFloat(selectedProjectDetail.ProbalidadeAi) || 0} sx={{ height: 8, borderRadius: 4, mb: 2 }} /><Typography variant="caption" color="text.secondary">{parseFloat(selectedProjectDetail.ProbalidadeAi) >= 70 ? 'Alta probabilidade de sucesso' : parseFloat(selectedProjectDetail.ProbalidadeAi) >= 40 ? 'Probabilidade moderada' : 'Baixa probabilidade. Avalie com cuidado'}</Typography></Paper></Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 3 }}>
+                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Informações Financeiras</Typography>
+                      <Stack spacing={2}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Meta</Typography><Typography variant="body2">Kz {formatCurrency(selectedProjectDetail.ValorProjecto)}</Typography></Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Arrecadado</Typography><Typography variant="body2" color="success.main">Kz {formatCurrency(selectedProjectDetail.ValorArrecadado || 0)}</Typography></Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Progresso</Typography><Typography variant="body2" color={(selectedProjectDetail.ValorArrecadado >= selectedProjectDetail.ValorProjecto) ? 'success.main' : 'text.primary'}>{((selectedProjectDetail.ValorArrecadado || 0) / selectedProjectDetail.ValorProjecto * 100).toFixed(1)}%</Typography></Box>
+                        <LinearProgress variant="determinate" value={Math.min(((selectedProjectDetail.ValorArrecadado || 0) / selectedProjectDetail.ValorProjecto) * 100, 100)} sx={{ height: 8, borderRadius: 4 }} />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">ROI</Typography><Typography variant="body2" color="success.main">{selectedProjectDetail.ReceitaEstimada || 0}%</Typography></Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Duração</Typography><Typography variant="body2">{selectedProjectDetail.DuracaoProjecto || 0} dias</Typography></Box>
+                      </Stack>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 3 }}>
+                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Análise de IA</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}><Typography variant="h3" color="primary">{selectedProjectDetail.ProbalidadeAi || 0}%</Typography><Typography variant="body2">Probabilidade de Sucesso</Typography></Box>
+                      <LinearProgress variant="determinate" value={parseFloat(selectedProjectDetail.ProbalidadeAi) || 0} sx={{ height: 8, borderRadius: 4, mb: 2 }} />
+                      <Typography variant="caption" color="text.secondary">{parseFloat(selectedProjectDetail.ProbalidadeAi) >= 70 ? 'Alta probabilidade de sucesso' : parseFloat(selectedProjectDetail.ProbalidadeAi) >= 40 ? 'Probabilidade moderada' : 'Baixa probabilidade. Avalie com cuidado'}</Typography>
+                    </Paper>
+                  </Grid>
                 </Grid>
               </DialogContent>
-              <DialogActions><Button onClick={() => setOpenProjectDialog(false)}>Fechar</Button><Button variant="contained" startIcon={<AttachMoneyIcon />} onClick={() => { setOpenProjectDialog(false); handleOpenInvestDialog(selectedProjectDetail); }}>Investir</Button></DialogActions>
+              <DialogActions>
+                <Button onClick={() => setOpenProjectDialog(false)}>Fechar</Button>
+                {selectedProjectDetail.ValorArrecadado >= selectedProjectDetail.ValorProjecto ? (
+                  <Tooltip title="Este projeto já atingiu a meta de arrecadação">
+                    <span>
+                      <Button variant="contained" disabled startIcon={<CheckCircleIcon />} sx={{ bgcolor: 'success.main', '&.Mui-disabled': { bgcolor: 'success.light', color: 'white' } }}>
+                        Meta Atingida
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button variant="contained" startIcon={<AttachMoneyIcon />} onClick={() => { setOpenProjectDialog(false); handleOpenInvestDialog(selectedProjectDetail); }}>
+                    Investir
+                  </Button>
+                )}
+              </DialogActions>
             </>
           )}
         </Dialog>
@@ -790,19 +969,50 @@ export default function InvestorProfile() {
           {selectedProject && (
             <>
               <DialogTitle><Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">Investir em {selectedProject.Nome}</Typography><IconButton onClick={() => setOpenInvestDialog(false)}><CloseIcon /></IconButton></Box></DialogTitle>
-              <DialogContent dividers><Grid container spacing={3}><Grid item xs={12}><TextField fullWidth type="number" label="Valor do Investimento" value={investAmount} onChange={(e) => setInvestAmount(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }} /></Grid><Grid item xs={12}><Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}><Typography variant="subtitle2" gutterBottom>Resumo</Typography><Stack spacing={1}><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Valor:</Typography><Typography variant="body2">Kz {formatCurrency(Number(investAmount) || 0)}</Typography></Box><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">ROI Estimado:</Typography><Typography variant="body2" color="success.main">{selectedProject.ReceitaEstimada || 0}%</Typography></Box><Divider /><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Probabilidade IA:</Typography><Typography variant="body2">{selectedProject.ProbalidadeAi || 0}%</Typography></Box></Stack></Paper></Grid></Grid></DialogContent>
-              <DialogActions><Button onClick={() => setOpenInvestDialog(false)}>Cancelar</Button><Button variant="contained" onClick={handleInvest} disabled={investing}>{investing ? <CircularProgress size={24} /> : 'Confirmar'}</Button></DialogActions>
+              <DialogContent dividers>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <TextField fullWidth type="number" label="Valor do Investimento" value={investAmount} onChange={(e) => setInvestAmount(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start">Kz</InputAdornment> }} />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                      <Typography variant="subtitle2" gutterBottom>Resumo</Typography>
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Valor:</Typography><Typography variant="body2">Kz {formatCurrency(Number(investAmount) || 0)}</Typography></Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">ROI Estimado:</Typography><Typography variant="body2" color="success.main">{selectedProject.ReceitaEstimada || 0}%</Typography></Box>
+                        <Divider />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Probabilidade IA:</Typography><Typography variant="body2">{selectedProject.ProbalidadeAi || 0}%</Typography></Box>
+                      </Stack>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setOpenInvestDialog(false)}>Cancelar</Button>
+                <Button variant="contained" onClick={handleInvest} disabled={investing}>{investing ? <CircularProgress size={24} /> : 'Confirmar'}</Button>
+              </DialogActions>
             </>
           )}
         </Dialog>
 
         <Dialog open={openSettingsDialog} onClose={() => setOpenSettingsDialog(false)} maxWidth="sm" fullWidth>
           <DialogTitle><Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">Editar Perfil</Typography><IconButton onClick={() => setOpenSettingsDialog(false)}><CloseIcon /></IconButton></Box></DialogTitle>
-          <DialogContent dividers><Grid container spacing={3}><Grid item xs={12} sx={{ textAlign: 'center' }}><Avatar src={investor.avatar} sx={{ width: 100, height: 100 }} /></Grid><Grid item xs={12}><TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} /></Grid><Grid item xs={12}><TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={4} /></Grid></Grid></DialogContent>
-          <DialogActions><Button onClick={() => setOpenSettingsDialog(false)}>Cancelar</Button><Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>{profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}</Button></DialogActions>
+          <DialogContent dividers>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sx={{ textAlign: 'center' }}><Avatar src={investor.avatar} sx={{ width: 100, height: 100 }} /></Grid>
+              <Grid item xs={12}><TextField fullWidth label="Nome" value={editProfile.name} onChange={(e) => setEditProfile({ ...editProfile, name: e.target.value })} /></Grid>
+              <Grid item xs={12}><TextField fullWidth label="Biografia" value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} multiline rows={4} /></Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenSettingsDialog(false)}>Cancelar</Button>
+            <Button variant="contained" onClick={updateUserProfile} disabled={profileUpdating}>{profileUpdating ? <CircularProgress size={24} /> : 'Salvar'}</Button>
+          </DialogActions>
         </Dialog>
 
-        <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}><Alert severity={snackbar.severity} variant="filled">{snackbar.message}</Alert></Snackbar>
+        <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          <Alert severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
+        </Snackbar>
 
         {selectedChatProject && (
           <ChatButton

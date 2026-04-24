@@ -32,7 +32,6 @@ import {
   TableHead,
   TableRow,
   LinearProgress,
-  Divider,
   Menu,
   MenuItem,
   Fab,
@@ -53,26 +52,20 @@ import {
   FormControl,
   InputLabel,
   Select,
-  FormHelperText,
   CircularProgress,
   Skeleton,
   Grow,
   alpha,
 } from '@mui/material';
 
-// Importações de ícones
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
-import SecurityIcon from '@mui/icons-material/Security';
-import AnalyticsIcon from '@mui/icons-material/Analytics';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import GroupsIcon from '@mui/icons-material/Groups';
 import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
@@ -84,21 +77,24 @@ import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import VerifiedIcon from '@mui/icons-material/Verified';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import GroupsIcon2 from '@mui/icons-material/Groups';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
 
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
-// Aliases
 const WalletIcon = AccountBalanceWalletIcon;
 const RocketIcon = RocketLaunchIcon;
 const HealthIcon = HealthAndSafetyIcon;
 
-// URL da API
 const API_BASE_URL = 'http://localhost:8080';
 
-// Função para formatar nome corretamente
 const formatName = (name) => {
   if (!name) return 'Admin';
   try {
@@ -108,7 +104,6 @@ const formatName = (name) => {
   }
 };
 
-// Função segura para formatar números
 const formatCurrency = (value) => {
   if (typeof value !== 'number') return '0';
   return new Intl.NumberFormat('pt-AO', {
@@ -117,7 +112,21 @@ const formatCurrency = (value) => {
   }).format(value);
 };
 
-// Tema moderno
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString('pt-AO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return dateString;
+  }
+};
+
 const theme = createTheme({
   palette: {
     primary: {
@@ -178,10 +187,11 @@ export default function AdminDashboard() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [anchorEl, setAnchorEl] = useState(null);
   const [analyzingProject, setAnalyzingProject] = useState(false);
+  const [approvingProject, setApprovingProject] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   
   const [adminData, setAdminData] = useState({ nome: 'Admin', isAdmin: false });
 
-  // Função para testar conexão com o backend
   const testBackendConnection = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/project/projectos-all`, { timeout: 5000 });
@@ -201,12 +211,7 @@ export default function AdminDashboard() {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const token = localStorage.getItem('authToken');
-      const response = await axios.get(`${API_BASE_URL}/auth/users`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await axios.get(`${API_BASE_URL}/auth/users`);
       
       if (response.data && response.data.users) {
         const formattedUsers = response.data.users.map(user => ({
@@ -235,10 +240,27 @@ export default function AdminDashboard() {
     setProjectsLoading(true);
     try {
       const response = await axios.get(`${API_BASE_URL}/project/projectos-all`, { timeout: 10000 });
-      if (response.data && response.data.projets) {
-        setProjects(response.data.projets);
-        setFilteredProjects(response.data.projets);
+      console.log('Resposta da API:', response.data);
+      
+      let projetosData = [];
+      if (response.data && response.data.projects) {
+        projetosData = response.data.projects;
+      } else if (response.data && response.data.projets) {
+        projetosData = response.data.projets;
+      } else if (Array.isArray(response.data)) {
+        projetosData = response.data;
       }
+      
+      const projetosFormatados = projetosData.map(p => ({
+        ...p,
+        Problematica: p.Problematica || '',
+        PublicoAlvo: p.PublicoAlvo || p.Publico || '',
+        Solucao: p.Solucao || '',
+        userId: p.userId || p.UserId || p.user_id || 'N/A'
+      }));
+      
+      setProjects(projetosFormatados);
+      setFilteredProjects(projetosFormatados);
     } catch (error) {
       console.error('Erro ao buscar projetos:', error);
       setSnackbar({
@@ -253,7 +275,6 @@ export default function AdminDashboard() {
 
   const updateUser = async (userId, userData) => {
     try {
-      const token = localStorage.getItem('authToken');
       const response = await axios.put(
         `${API_BASE_URL}/auth/update/${userId}`,
         {
@@ -261,11 +282,6 @@ export default function AdminDashboard() {
           Email: userData.email,
           Bio: userData.bio || '',
           Status: userData.status
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
         }
       );
 
@@ -289,34 +305,244 @@ export default function AdminDashboard() {
     }
   };
 
-  // Função para analisar projeto usando a API do backend
-  const analyzeProjectWithBackend = async (projectId) => {
+  // ROTA EXISTENTE: analyze-only (não altera status)
+  const analyzeProjectOnly = async (projectId) => {
     try {
-      const token = localStorage.getItem('authToken');
       const response = await axios.put(
-        `${API_BASE_URL}/api/ai/analyze/${projectId}`,
+        `${API_BASE_URL}/api/ai/analyze-only/${projectId}`,
         {},
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
-        }
+        { timeout: 30000 }
       );
-      
       return response.data;
     } catch (error) {
-      console.error('Erro ao chamar API de análise:', error);
+      console.error('Erro ao analisar projeto:', error);
       throw error;
     }
   };
 
-  const handleApproveProject = async (project) => {
+  // ROTA EXISTENTE: approve (aprova manualmente, mantém probabilidade)
+  const approveProjectManually = async (projectId) => {
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/api/ai/approve/${projectId}`,
+        {}
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao aprovar projeto:', error);
+      throw error;
+    }
+  };
+
+  const generateProjectPDF = async (project) => {
+    setGeneratingPdf(true);
+    
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Cabeçalho
+      doc.setFillColor(13, 138, 188);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text('KAMBABUSINESS', pageWidth / 2, 25, { align: 'center' });
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Relatório do Projeto', pageWidth / 2, 55, { align: 'center' });
+      
+      doc.setDrawColor(13, 138, 188);
+      doc.setLineWidth(0.5);
+      doc.line(20, 65, pageWidth - 20, 65);
+      
+      let yPos = 80;
+      
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 138, 188);
+      doc.text('INFORMAÇÕES DO PROJETO', 20, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('ID do Usuário (Identificador):', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(project.userId?.toString() || 'N/A', 100, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('ID do Projeto:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(project.id?.toString() || 'N/A', 70, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Nome do Projeto:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(project.Nome || 'N/A', 70, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Categoria:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(project.Categ || 'N/A', 70, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Status:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(project.Status || 'N/A', 70, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Data de Criação:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formatDate(project.createdAt), 70, yPos);
+      yPos += 12;
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 138, 188);
+      doc.text('DESCRIÇÃO DO PROJETO', 20, yPos);
+      yPos += 8;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      const description = project.Content || project.Resumo || 'N/A';
+      const splitDescription = doc.splitTextToSize(description, pageWidth - 40);
+      doc.text(splitDescription, 20, yPos);
+      yPos += (splitDescription.length * 5) + 8;
+      
+      if (project.Problematica) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(239, 68, 68);
+        doc.text('PROBLEMÁTICA', 20, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        const splitProblematica = doc.splitTextToSize(project.Problematica, pageWidth - 40);
+        doc.text(splitProblematica, 20, yPos);
+        yPos += (splitProblematica.length * 5) + 8;
+      }
+      
+      if (project.PublicoAlvo) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 138, 188);
+        doc.text('PÚBLICO-ALVO', 20, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        const splitPublico = doc.splitTextToSize(project.PublicoAlvo, pageWidth - 40);
+        doc.text(splitPublico, 20, yPos);
+        yPos += (splitPublico.length * 5) + 8;
+      }
+      
+      if (project.Solucao) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(245, 158, 11);
+        doc.text('SOLUÇÃO PROPOSTA', 20, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        const splitSolucao = doc.splitTextToSize(project.Solucao, pageWidth - 40);
+        doc.text(splitSolucao, 20, yPos);
+        yPos += (splitSolucao.length * 5) + 12;
+      }
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 138, 188);
+      doc.text('INFORMAÇÕES FINANCEIRAS', 20, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Valor do Projeto:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Kz ${formatCurrency(project.ValorProjecto)}`, 80, yPos);
+      yPos += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Duração:', 20, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${project.DuracaoProjecto || 0} dias`, 80, yPos);
+      yPos += 12;
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 138, 188);
+      doc.text('ANÁLISE DE IA', 20, yPos);
+      yPos += 10;
+      
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 138, 188);
+      doc.text(`${project.ProbalidadeAi || '0'}%`, 20, yPos);
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Probabilidade de Sucesso', 50, yPos - 2);
+      
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(128, 128, 128);
+        doc.text(
+          `Gerado em ${new Date().toLocaleString('pt-AO')} - KAMBABUSINESS Admin`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+      }
+      
+      doc.save(`projeto_${project.id || 'relatorio'}_${project.Nome?.replace(/\s+/g, '_') || 'projeto'}.pdf`);
+      
+      setSnackbar({
+        open: true,
+        message: 'PDF gerado com sucesso!',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao gerar PDF',
+        severity: 'error'
+      });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handleAnalyzeOnly = async (project) => {
     setAnalyzingProject(true);
     
     try {
-      const result = await analyzeProjectWithBackend(project.id);
+      const result = await analyzeProjectOnly(project.id);
       
       if (result.success) {
         setSnackbar({
@@ -324,14 +550,8 @@ export default function AdminDashboard() {
           message: result.message,
           severity: 'success'
         });
-        
         await fetchProjects();
-        setOpenProjectDialog(false);
-        setSelectedProject(null);
-      } else {
-        throw new Error(result.message || 'Erro ao analisar projeto');
       }
-      
     } catch (error) {
       console.error('Erro ao analisar projeto:', error);
       setSnackbar({
@@ -344,9 +564,32 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAnalyzeProject = (project) => {
-    setSelectedProject(project);
-    setOpenProjectDialog(true);
+  const handleApproveProject = async (project) => {
+    setApprovingProject(true);
+    
+    try {
+      const result = await approveProjectManually(project.id);
+      
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: result.message,
+          severity: 'success'
+        });
+        await fetchProjects();
+        setOpenProjectDialog(false);
+        setSelectedProject(null);
+      }
+    } catch (error) {
+      console.error('Erro ao aprovar projeto:', error);
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.message || error.message || 'Erro ao aprovar projeto',
+        severity: 'error'
+      });
+    } finally {
+      setApprovingProject(false);
+    }
   };
 
   const handleViewUser = (user) => {
@@ -529,7 +772,6 @@ export default function AdminDashboard() {
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
         
-        {/* Sidebar */}
         <Drawer
           variant="permanent"
           sx={{
@@ -609,10 +851,8 @@ export default function AdminDashboard() {
           </Box>
         </Drawer>
 
-        {/* Main Content */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           
-          {/* Header */}
           <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
             <Toolbar>
               <Typography variant="h5" sx={{ flex: 1, fontWeight: 600 }}>
@@ -648,7 +888,6 @@ export default function AdminDashboard() {
             </Toolbar>
           </AppBar>
 
-          {/* Profile Menu */}
           <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
             <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
               <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
@@ -656,10 +895,8 @@ export default function AdminDashboard() {
             </MenuItem>
           </Menu>
 
-          {/* Content Area */}
           <Box sx={{ p: 4, overflow: 'auto' }}>
             
-            {/* Metrics Cards */}
             <Grid container spacing={3} sx={{ mb: 4 }}>
               {metrics.map((metric, index) => (
                 <Grow in={true} timeout={800 + index * 200} key={index}>
@@ -683,7 +920,6 @@ export default function AdminDashboard() {
               ))}
             </Grid>
 
-            {/* Tabs */}
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
               <Tabs value={validTab} onChange={(e, v) => setCurrentTab(v)}>
                 <Tab label="Dashboard" />
@@ -692,7 +928,6 @@ export default function AdminDashboard() {
               </Tabs>
             </Box>
 
-            {/* Dashboard View */}
             {validTab === 0 && (
               <Zoom in={true}>
                 <Box>
@@ -727,6 +962,30 @@ export default function AdminDashboard() {
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                   {project.Content?.substring(0, 120)}...
                                 </Typography>
+                                
+                                {(project.Problematica || project.PublicoAlvo || project.Solucao) && (
+                                  <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'grey.50' }}>
+                                    {project.Problematica && (
+                                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                                        <ErrorOutlineIcon color="error" sx={{ fontSize: 16, mt: 0.2 }} />
+                                        <Typography variant="caption">{project.Problematica.substring(0, 60)}...</Typography>
+                                      </Box>
+                                    )}
+                                    {project.PublicoAlvo && (
+                                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                                        <GroupsIcon2 color="primary" sx={{ fontSize: 16, mt: 0.2 }} />
+                                        <Typography variant="caption">{project.PublicoAlvo.substring(0, 60)}...</Typography>
+                                      </Box>
+                                    )}
+                                    {project.Solucao && (
+                                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                        <LightbulbIcon sx={{ color: '#f59e0b', fontSize: 16, mt: 0.2 }} />
+                                        <Typography variant="caption">{project.Solucao.substring(0, 60)}...</Typography>
+                                      </Box>
+                                    )}
+                                  </Paper>
+                                )}
+                                
                                 <Box sx={{ mb: 2 }}>
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                                     <Typography variant="body2">Probabilidade IA</Typography>
@@ -737,10 +996,35 @@ export default function AdminDashboard() {
                                   <LinearProgress variant="determinate" value={parseFloat(project.ProbalidadeAi) || 0} sx={{ height: 6, borderRadius: 3 }} />
                                 </Box>
                               </CardContent>
-                              <CardActions sx={{ p: 3, pt: 0 }}>
-                                <Button variant="outlined" fullWidth startIcon={<VisibilityIcon />} onClick={() => handleAnalyzeProject(project)}>
-                                  Ver Detalhes
+                              <CardActions sx={{ p: 3, pt: 0, gap: 1, flexWrap: 'wrap' }}>
+                                <Button variant="outlined" startIcon={<VisibilityIcon />} onClick={() => {
+                                  setSelectedProject(project);
+                                  setOpenProjectDialog(true);
+                                }} size="small">
+                                  Detalhes
                                 </Button>
+                                <Button 
+                                  variant="contained" 
+                                  color="secondary" 
+                                  startIcon={<PictureAsPdfIcon />}
+                                  onClick={() => generateProjectPDF(project)}
+                                  disabled={generatingPdf}
+                                  size="small"
+                                >
+                                  PDF
+                                </Button>
+                                {project.Status !== 'Ativo' && (
+                                  <Button 
+                                    variant="contained" 
+                                    color="success" 
+                                    startIcon={<ThumbUpIcon />}
+                                    onClick={() => handleApproveProject(project)}
+                                    disabled={approvingProject}
+                                    size="small"
+                                  >
+                                    Aprovar
+                                  </Button>
+                                )}
                               </CardActions>
                             </Card>
                           </Grid>
@@ -752,7 +1036,6 @@ export default function AdminDashboard() {
               </Zoom>
             )}
 
-            {/* Users View */}
             {validTab === 1 && (
               <Fade in={true}>
                 <Box>
@@ -837,7 +1120,6 @@ export default function AdminDashboard() {
               </Fade>
             )}
 
-            {/* Projects View */}
             {validTab === 2 && (
               <Fade in={true}>
                 <Box>
@@ -866,15 +1148,55 @@ export default function AdminDashboard() {
                                     <Box component="img" src={project.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} sx={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 2 }} />
                                   </Grid>
                                   <Grid item xs={12} md={9}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
                                       <Box>
                                         <Typography variant="h6">{project.Nome}</Typography>
                                         <Typography variant="body2" color="text.secondary">
-                                          ID: {project.id} • Criado em: {new Date(project.createdAt).toLocaleDateString('pt-AO')}
+                                          ID: {project.id} • ID do Usuário: {project.userId || 'N/A'} • Criado em: {new Date(project.createdAt).toLocaleDateString('pt-AO')}
                                         </Typography>
                                       </Box>
                                       <Chip icon={getStatusIcon(project.Status)} label={project.Status} color={getStatusColor(project.Status)} />
                                     </Box>
+
+                                    {(project.Problematica || project.PublicoAlvo || project.Solucao) && (
+                                      <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+                                        <Grid container spacing={2}>
+                                          {project.Problematica && (
+                                            <Grid item xs={12}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <ErrorOutlineIcon color="error" sx={{ mt: 0.3 }} />
+                                                <Box>
+                                                  <Typography variant="subtitle2" fontWeight={600}>Problemática</Typography>
+                                                  <Typography variant="body2">{project.Problematica}</Typography>
+                                                </Box>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                          {project.PublicoAlvo && (
+                                            <Grid item xs={12} sm={6}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <GroupsIcon2 color="primary" sx={{ mt: 0.3 }} />
+                                                <Box>
+                                                  <Typography variant="subtitle2" fontWeight={600}>Público-Alvo</Typography>
+                                                  <Typography variant="body2">{project.PublicoAlvo}</Typography>
+                                                </Box>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                          {project.Solucao && (
+                                            <Grid item xs={12} sm={6}>
+                                              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                <LightbulbIcon sx={{ color: '#f59e0b', mt: 0.3 }} />
+                                                <Box>
+                                                  <Typography variant="subtitle2" fontWeight={600}>Solução Proposta</Typography>
+                                                  <Typography variant="body2">{project.Solucao}</Typography>
+                                                </Box>
+                                              </Box>
+                                            </Grid>
+                                          )}
+                                        </Grid>
+                                      </Paper>
+                                    )}
 
                                     <Typography variant="body2" color="text.secondary" paragraph sx={{ mb: 2 }}>
                                       {project.Content || project.Resumo}
@@ -899,19 +1221,39 @@ export default function AdminDashboard() {
                                       </Grid>
                                     </Grid>
 
-                                    <Box sx={{ display: 'flex', gap: 1 }}>
-                                      <Button variant="contained" startIcon={<VisibilityIcon />} onClick={() => handleAnalyzeProject(project)}>
-                                        Analisar
+                                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                      <Button 
+                                        variant="contained" 
+                                        startIcon={<AnalyticsIcon />} 
+                                        onClick={() => handleAnalyzeOnly(project)} 
+                                        disabled={analyzingProject}
+                                      >
+                                        {analyzingProject ? 'Analisando...' : 'Analisar com IA'}
                                       </Button>
-                                      {project.Status === 'Em análise' && (
+                                      <Button variant="contained" startIcon={<VisibilityIcon />} onClick={() => {
+                                        setSelectedProject(project);
+                                        setOpenProjectDialog(true);
+                                      }}>
+                                        Ver Detalhes
+                                      </Button>
+                                      <Button 
+                                        variant="contained" 
+                                        color="secondary" 
+                                        startIcon={<PictureAsPdfIcon />}
+                                        onClick={() => generateProjectPDF(project)}
+                                        disabled={generatingPdf}
+                                      >
+                                        {generatingPdf ? 'Gerando...' : 'Gerar PDF'}
+                                      </Button>
+                                      {project.Status !== 'Ativo' && (
                                         <Button 
                                           variant="contained" 
                                           color="success" 
-                                          startIcon={<SmartToyIcon />} 
+                                          startIcon={<ThumbUpIcon />}
                                           onClick={() => handleApproveProject(project)}
-                                          disabled={analyzingProject}
+                                          disabled={approvingProject}
                                         >
-                                          {analyzingProject ? 'Analisando...' : 'Analisar com IA'}
+                                          {approvingProject ? 'Aprovando...' : 'Aprovar Manualmente'}
                                         </Button>
                                       )}
                                     </Box>
@@ -930,7 +1272,6 @@ export default function AdminDashboard() {
           </Box>
         </Box>
 
-        {/* Project Details Dialog */}
         <Dialog open={openProjectDialog} onClose={() => setOpenProjectDialog(false)} maxWidth="md" fullWidth>
           {selectedProject && (
             <>
@@ -943,7 +1284,50 @@ export default function AdminDashboard() {
               <DialogContent dividers>
                 <Box component="img" src={selectedProject.Img || 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800'} sx={{ width: '100%', height: 250, objectFit: 'cover', borderRadius: 2, mb: 2 }} />
                 <Typography variant="h5">{selectedProject.Nome}</Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>Categoria: {selectedProject.Categ}</Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  ID do Projeto: {selectedProject.id} • ID do Usuário: {selectedProject.userId || 'N/A'} • Categoria: {selectedProject.Categ}
+                </Typography>
+                
+                {(selectedProject.Problematica || selectedProject.PublicoAlvo || selectedProject.Solucao) && (
+                  <Paper variant="outlined" sx={{ p: 2, my: 2, bgcolor: 'grey.50' }}>
+                    <Grid container spacing={2}>
+                      {selectedProject.Problematica && (
+                        <Grid item xs={12}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <ErrorOutlineIcon color="error" sx={{ mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Problemática</Typography>
+                              <Typography variant="body2">{selectedProject.Problematica}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {selectedProject.PublicoAlvo && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <GroupsIcon2 color="primary" sx={{ mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Público-Alvo</Typography>
+                              <Typography variant="body2">{selectedProject.PublicoAlvo}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                      {selectedProject.Solucao && (
+                        <Grid item xs={12} sm={6}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                            <LightbulbIcon sx={{ color: '#f59e0b', mt: 0.3 }} />
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600}>Solução Proposta</Typography>
+                              <Typography variant="body2">{selectedProject.Solucao}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                )}
+                
                 <Typography variant="body1" paragraph>{selectedProject.Content || selectedProject.Resumo}</Typography>
                 
                 <Grid container spacing={3}>
@@ -977,9 +1361,32 @@ export default function AdminDashboard() {
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setOpenProjectDialog(false)}>Fechar</Button>
-                {selectedProject.Status === 'Em análise' && (
-                  <Button variant="contained" color="success" onClick={() => handleApproveProject(selectedProject)} disabled={analyzingProject} startIcon={<SmartToyIcon />}>
-                    {analyzingProject ? 'Analisando...' : 'Analisar com IA'}
+                <Button 
+                  variant="contained" 
+                  color="secondary" 
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={() => generateProjectPDF(selectedProject)}
+                  disabled={generatingPdf}
+                >
+                  {generatingPdf ? 'Gerando...' : 'Gerar PDF'}
+                </Button>
+                <Button 
+                  variant="contained" 
+                  startIcon={<AnalyticsIcon />}
+                  onClick={() => handleAnalyzeOnly(selectedProject)}
+                  disabled={analyzingProject}
+                >
+                  {analyzingProject ? 'Analisando...' : 'Analisar com IA'}
+                </Button>
+                {selectedProject.Status !== 'Ativo' && (
+                  <Button 
+                    variant="contained" 
+                    color="success" 
+                    startIcon={<ThumbUpIcon />}
+                    onClick={() => handleApproveProject(selectedProject)}
+                    disabled={approvingProject}
+                  >
+                    {approvingProject ? 'Aprovando...' : 'Aprovar Manualmente'}
                   </Button>
                 )}
               </DialogActions>
@@ -987,7 +1394,6 @@ export default function AdminDashboard() {
           )}
         </Dialog>
 
-        {/* User Details Dialog */}
         <Dialog open={openUserDialog} onClose={() => setOpenUserDialog(false)} maxWidth="sm" fullWidth>
           {selectedUser && (
             <>
@@ -1039,7 +1445,6 @@ export default function AdminDashboard() {
           )}
         </Dialog>
 
-        {/* Edit User Dialog */}
         <Dialog open={openEditUserDialog} onClose={() => setOpenEditUserDialog(false)} maxWidth="sm" fullWidth>
           {editingUser && (
             <>
@@ -1085,14 +1490,12 @@ export default function AdminDashboard() {
           )}
         </Dialog>
 
-        {/* Snackbar */}
         <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
           <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} variant="filled">
             {snackbar.message}
           </Alert>
         </Snackbar>
 
-        {/* FAB */}
         <Fab color="primary" sx={{ position: 'fixed', bottom: 32, right: 32 }}>
           <AddIcon />
         </Fab>

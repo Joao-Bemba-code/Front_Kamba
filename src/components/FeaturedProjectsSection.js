@@ -34,6 +34,7 @@ import LocationOnIcon from '@mui/icons-material/LocationOn';
 import CloseIcon from '@mui/icons-material/Close';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 
@@ -134,6 +135,34 @@ const ProjectMetric = styled(Box)(({ theme }) => ({
   fontSize: '0.75rem',
 }));
 
+// Função para calcular ROI (mesma do backend)
+const calculateROI = (valorMeta, receitaEstimada) => {
+  const meta = parseFloat(valorMeta) || 0;
+  const receita = parseFloat(receitaEstimada) || 0;
+  
+  if (meta <= 0) return 0;
+  
+  const lucro = receita - meta;
+  const roi = (lucro / meta) * 100;
+  
+  return Math.round(roi * 10) / 10;
+};
+
+// Função para obter a cor do ROI
+const getROIColor = (roi) => {
+  if (roi >= 30) return 'success';
+  if (roi >= 20) return 'info';
+  if (roi >= 10) return 'warning';
+  return 'error';
+};
+
+// Função para formatar ROI
+const formatROI = (roi) => {
+  if (roi === 0) return 'N/A';
+  if (roi > 0) return `+${roi}%`;
+  return `${roi}%`;
+};
+
 const FeaturedProjectsSection = () => {
   const theme = useTheme();
   const router = useRouter();
@@ -148,11 +177,29 @@ const FeaturedProjectsSection = () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API_BASE_URL}/project/projectos-all`, { timeout: 10000 });
-      if (response.data && response.data.projets) {
-        // Filtrar apenas projetos com status "Ativo"
-        const activeProjects = response.data.projets.filter(p => p.Status === 'Ativo');
-        setProjects(activeProjects);
+      
+      let projetosData = [];
+      if (response.data && response.data.projects) {
+        projetosData = response.data.projects;
+      } else if (response.data && response.data.projets) {
+        projetosData = response.data.projets;
+      } else if (Array.isArray(response.data)) {
+        projetosData = response.data;
       }
+      
+      // Filtrar apenas projetos com status "Ativo" e calcular ROI
+      const activeProjects = projetosData
+        .filter(p => p.Status === 'Ativo')
+        .map(p => ({
+          ...p,
+          Problematica: p.Problematica || '',
+          PublicoAlvo: p.PublicoAlvo || p.Publico || '',
+          Solucao: p.Solucao || '',
+          userId: p.userId || p.UserId || p.user_id || 'N/A',
+          roi: calculateROI(p.ValorProjecto, p.ReceitaEstimada)
+        }));
+      
+      setProjects(activeProjects);
     } catch (error) {
       console.error('Erro ao buscar projetos:', error);
     } finally {
@@ -222,20 +269,20 @@ const FeaturedProjectsSection = () => {
                 OPORTUNIDADES
               </Typography>
               <SectionTitle variant="h3" gutterBottom>
-                Projectos em Destaque
+                Projetos em Destaque
               </SectionTitle>
               <Typography
                 variant="body1"
                 color="text.secondary"
                 sx={{ maxWidth: 600 }}
               >
-                Projectos selecionados para investidores que procuram impacto e retorno.
+                Projetos selecionados para investidores que procuram impacto e retorno.
               </Typography>
             </Box>
           </SectionHeader>
         </Fade>
 
-        {/* Grid de Projectos */}
+        {/* Grid de Projetos */}
         {projects.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <Typography variant="h6" color="text.secondary">
@@ -248,8 +295,8 @@ const FeaturedProjectsSection = () => {
         ) : (
           <Grid container spacing={3}>
             {projects.map((project, index) => {
-              const progress = project.ProbalidadeAi ? parseFloat(project.ProbalidadeAi) : 0;
-              const roi = project.ReceitaEstimada || 0;
+              const successProbability = project.ProbalidadeAi ? parseFloat(project.ProbalidadeAi) : 0;
+              const roi = project.roi;
               
               return (
                 <Grid item xs={12} sm={6} lg={4} key={project.id}>
@@ -286,10 +333,10 @@ const FeaturedProjectsSection = () => {
                               Probabilidade de Sucesso
                             </Typography>
                             <Typography variant="caption" fontWeight={700} color="primary">
-                              {progress}%
+                              {successProbability}%
                             </Typography>
                           </Box>
-                          <ProgressBar variant="determinate" value={progress} />
+                          <ProgressBar variant="determinate" value={successProbability} />
                         </Box>
 
                         {/* Métricas */}
@@ -306,8 +353,12 @@ const FeaturedProjectsSection = () => {
                             <Typography variant="caption" color="text.secondary" display="block">
                               ROI Estimado
                             </Typography>
-                            <Typography variant="subtitle2" fontWeight={700} color="success.main">
-                              {formatCurrency(roi)}%
+                            <Typography 
+                              variant="subtitle2" 
+                              fontWeight={700} 
+                              color={`${getROIColor(roi)}.main`}
+                            >
+                              {formatROI(roi)}
                             </Typography>
                           </Grid>
                           <Grid item xs={6}>
@@ -322,11 +373,23 @@ const FeaturedProjectsSection = () => {
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
                               <Typography variant="caption" color="success.main" fontWeight={600}>
-                                IA: {progress}%
+                                IA: {successProbability}%
                               </Typography>
                             </Box>
                           </Grid>
                         </Grid>
+
+                        {/* Informações extras - Problemática/Solução (opcional) */}
+                        {project.Problematica && (
+                          <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.1)}` }}>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Problemática
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              {project.Problematica.substring(0, 80)}...
+                            </Typography>
+                          </Box>
+                        )}
                       </CardContent>
 
                       <CardActions sx={{ p: 3, pt: 0 }}>
@@ -384,12 +447,66 @@ const FeaturedProjectsSection = () => {
               Para investir neste projeto, você precisa estar cadastrado como investidor.
             </Alert>
             
+            {/* Informações do Projeto no Dialog */}
+            {selectedProject && (
+              <>
+                <Typography variant="body2" paragraph>
+                  {selectedProject.Resumo || selectedProject.Content?.substring(0, 200) || 'Sem descrição detalhada.'}
+                </Typography>
+
+                <Box sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05), p: 2, borderRadius: 2, mb: 3 }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Meta do Projeto
+                      </Typography>
+                      <Typography variant="h6" fontWeight={700} color="primary.main">
+                        Kz {formatCurrency(selectedProject.ValorProjecto)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        ROI Estimado
+                      </Typography>
+                      <Typography 
+                        variant="h6" 
+                        fontWeight={700} 
+                        color={`${getROIColor(selectedProject.roi)}.main`}
+                      >
+                        {formatROI(selectedProject.roi)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Duração
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {selectedProject.DuracaoProjecto || 0} dias
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        Probabilidade IA
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600} color="primary">
+                        {selectedProject.ProbalidadeAi || '0'}%
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </>
+            )}
+            
             <Typography variant="body2" color="text.secondary" paragraph>
               A KambaBusiness conecta investidores a oportunidades reais de negócio em Angola.
               Ao se cadastrar, você terá acesso a:
             </Typography>
             
             <Stack spacing={1.5} sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccountBalanceWalletIcon sx={{ color: theme.palette.primary.main, fontSize: 20 }} />
+                <Typography variant="body2">Dashboard completo de investimentos</Typography>
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TrendingUpIcon sx={{ color: theme.palette.primary.main, fontSize: 20 }} />
                 <Typography variant="body2">Análise detalhada de cada projeto</Typography>
